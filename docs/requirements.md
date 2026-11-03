@@ -120,4 +120,4 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 - 部署只允許 `git pull --ff-only origin main`、更新既有 venv requirements、重啟對應既有 systemd，並逐台驗證 Commit、服務 active、Health 與 A/B `TEAM_ID`。
 - 不得修改 `.env`、`.env.admin`、SQLite、Cloudflare、Zabbix、ntopng；不得使用 `git reset --hard`、`git push --force` 或 `apt upgrade`。
 - 遠端有未提交修改、SSH/Git/依賴/重啟/Health 失敗時必須停止並明確報告。
-- sudo 密碼不得寫入腳本；預設使用 `sudo -n`，需要密碼時由操作人使用 `-InteractiveSudo` 在 SSH 終端輸入。
+- 三台 VM 必須只對指定服務設定 NOPASSWD：A/B 使用 `woodfish.service`，Monitor 使用 `woodfish-admin.service`。部署腳本所有 SSH 使用 `BatchMode=yes`，部署前以 `sudo -n /usr/bin/systemctl show <service> --property=LoadState --value` 唯讀驗證權限，重啟只允許 `sudo -n /usr/bin/systemctl restart <service>`。不得使用 `sudo -S`、標準輸入傳密碼或互動式 SSH。

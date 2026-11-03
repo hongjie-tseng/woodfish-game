@@ -2,16 +2,15 @@
 param(
     [ValidateSet("A", "B", "Monitor", "All")]
     [string]$Target = "All",
-    [switch]$Deploy,
-    [switch]$InteractiveSudo
+    [switch]$Deploy
 )
 
 $ErrorActionPreference = "Stop"
 $ProjectPath = "/home/labuser/woodfish-game"
 $Servers = [ordered]@{
-    A = @{ Host = "woodfish-a"; Service = "woodfish"; Health = "http://127.0.0.1:8000/health"; Config = "http://127.0.0.1:8000/api/config" }
-    B = @{ Host = "woodfish-b"; Service = "woodfish"; Health = "http://127.0.0.1:8000/health"; Config = "http://127.0.0.1:8000/api/config" }
-    Monitor = @{ Host = "woodfish-monitor"; Service = "woodfish-admin"; Health = "http://127.0.0.1:8010/health"; Config = $null }
+    A = @{ Host = "woodfish-a"; Service = "woodfish.service"; Health = "http://127.0.0.1:8000/health"; Config = "http://127.0.0.1:8000/api/config" }
+    B = @{ Host = "woodfish-b"; Service = "woodfish.service"; Health = "http://127.0.0.1:8000/health"; Config = "http://127.0.0.1:8000/api/config" }
+    Monitor = @{ Host = "woodfish-monitor"; Service = "woodfish-admin.service"; Health = "http://127.0.0.1:8010/health"; Config = $null }
 }
 
 function Get-Targets {
@@ -20,10 +19,8 @@ function Get-Targets {
 }
 
 function Invoke-SSH {
-    param([string]$HostName, [string]$Command, [switch]$Tty)
-    $arguments = @("-o", "ConnectTimeout=8")
-    if (-not $InteractiveSudo) { $arguments += @("-o", "BatchMode=yes") }
-    if ($Tty) { $arguments += "-tt" }
+    param([string]$HostName, [string]$Command)
+    $arguments = @("-o", "ConnectTimeout=8", "-o", "BatchMode=yes")
     $arguments += @($HostName, $Command)
     $output = & ssh.exe @arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -31,6 +28,13 @@ function Invoke-SSH {
         throw "${HostName}: remote command failed: $details"
     }
     return ($output -join [Environment]::NewLine).Trim()
+}
+
+function Assert-RemoteAccess {
+    param([string]$Name)
+    $server = $Servers[$Name]
+    Invoke-SSH $server.Host "hostname"
+    Invoke-SSH $server.Host "sudo -n /usr/bin/systemctl show $($server.Service) --property=LoadState --value"
 }
 
 function Assert-LocalGit {
@@ -66,11 +70,7 @@ function Deploy-One {
     Assert-RemotePreconditions $Name
     Invoke-SSH $server.Host "cd $ProjectPath; git pull --quiet --ff-only origin main"
     Invoke-SSH $server.Host "$ProjectPath/.venv/bin/pip install -r $ProjectPath/requirements.txt"
-    if ($InteractiveSudo) {
-        Invoke-SSH $server.Host "sudo systemctl restart $($server.Service)" -Tty
-    } else {
-        Invoke-SSH $server.Host "sudo -n systemctl restart $($server.Service)"
-    }
+    Invoke-SSH $server.Host "sudo -n /usr/bin/systemctl restart $($server.Service)"
     $commit = Invoke-SSH $server.Host "cd $ProjectPath; git rev-parse --short HEAD"
     $service = Invoke-SSH $server.Host "systemctl is-active $($server.Service)"
     $health = Invoke-SSH $server.Host "curl --fail --silent --show-error --max-time 8 $($server.Health)"
@@ -90,6 +90,17 @@ function Deploy-One {
 Assert-LocalGit
 $targets = Get-Targets
 Write-Host "Expected deployment commit: $($script:ExpectedCommit)"
+foreach ($Name in @("A", "B", "Monitor")) {
+    if ($targets -contains $Name) {
+        try {
+            Assert-RemoteAccess $Name
+            Write-Host "$Name SSH and NOPASSWD checks: PASS" -ForegroundColor Green
+        } catch {
+            Write-Error "Remote access check failed for ${Name}: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+}
 if (-not $Deploy) {
     Write-Host "CHECK ONLY: no remote changes. Use -Deploy to update servers." -ForegroundColor Yellow
     & "$PSScriptRoot\check-servers.ps1" -Target $Target

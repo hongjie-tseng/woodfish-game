@@ -144,11 +144,14 @@ ssh woodfish-monitor "hostname"
 .\scripts\deploy.ps1 -Target All -Deploy
 ```
 
-若 systemd 重啟需要 sudo 密碼，使用互動式 SSH 輸入，不把密碼寫入腳本：
+目前三台 VM 必須預先為指定服務設定 NOPASSWD。部署腳本所有 SSH 都使用 `BatchMode=yes`，部署前會以唯讀方式驗證 sudo 權限；部署時只執行以下精確重啟指令：
 
-```powershell
-.\scripts\deploy.ps1 -Target All -Deploy -InteractiveSudo
+```text
+sudo -n /usr/bin/systemctl restart woodfish.service
+sudo -n /usr/bin/systemctl restart woodfish-admin.service
 ```
+
+若 NOPASSWD 權限不足，腳本會在部署前停止，不會等待密碼，也不會使用 `sudo -S` 或標準輸入傳送密碼。`-InteractiveSudo` 已不再支援。
 
 若任何一台 SSH、Git、依賴安裝、重啟或 Health 驗證失敗，腳本會停止並回報失敗，不會宣稱整體部署成功。腳本不使用 `git reset --hard`、`git push --force`、資料庫重建或 `apt upgrade`。
 
