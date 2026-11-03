@@ -95,18 +95,6 @@ async def apply_action(client: httpx.AsyncClient, target: str, action: str, payl
         return ControlResult(target=target, success=False, status="failed", detail=str(error))
 
 
-async def fetch_audit_logs(client: httpx.AsyncClient, target: str, limit: int) -> list[dict]:
-    try:
-        response = await client.get(
-            f"{UPSTREAMS[target]}/api/admin/audit-logs",
-            params={"limit": limit},
-        )
-        response.raise_for_status()
-        return [{**entry, "target": target} for entry in response.json()]
-    except (httpx.HTTPError, ValueError) as error:
-        return [{"target": target, "error": str(error)}]
-
-
 @app.get("/", include_in_schema=False)
 async def admin_index() -> HTMLResponse:
     return HTMLResponse(INDEX_FILE.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store, max-age=0"})
@@ -121,20 +109,6 @@ async def admin_health() -> dict:
 async def admin_status() -> dict:
     teams = await fetch_all_status()
     return {"teams": teams, "server_time": datetime.now(timezone.utc)}
-
-
-@app.get("/api/admin/audit-logs")
-async def audit_logs(limit: int = 50) -> dict:
-    if limit < 1 or limit > 200:
-        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
-    timeout = httpx.Timeout(admin_settings.admin_request_timeout_seconds)
-    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
-        batches = await asyncio.gather(
-            *(fetch_audit_logs(client, target, limit) for target in UPSTREAMS)
-        )
-    records = [record for batch in batches for record in batch if "id" in record]
-    records.sort(key=lambda record: (record["timestamp"], record["id"]), reverse=True)
-    return {"records": records[:limit], "server_time": datetime.now(timezone.utc)}
 
 
 @app.post("/api/admin/control/{target}/{action}", response_model=ControlResponse)

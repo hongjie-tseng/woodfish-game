@@ -59,18 +59,3 @@ class AdminStatusResponse(BaseModel):
     version: str
     commit: str
     server_time: datetime
-
-
-class AdminAuditLogResponse(BaseModel):
-    id: int
-    timestamp: datetime
-    team_id: str
-    action: str
-    previous_status: str
-    new_status: str
-    source: str
-    source_ip: str | None
-    success: bool
-    error_message: str | None
-    git_commit: str | None
-    state_initialized: bool

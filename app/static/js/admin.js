@@ -37,31 +37,6 @@ function teamCard(team) {
   </article>`;
 }
 
-function auditRow(entry) {
-  const result = entry.success ? "成功" : `失敗：${entry.error_message || "未知錯誤"}`;
-  return `<tr>
-    <td>${escapeHtml(entry.timestamp)}</td>
-    <td>${escapeHtml(entry.target)} / ${escapeHtml(entry.action)}</td>
-    <td>${escapeHtml(entry.previous_status)} → ${escapeHtml(entry.new_status)}</td>
-    <td>${escapeHtml(result)}</td>
-    <td>${escapeHtml(entry.source)}</td>
-  </tr>`;
-}
-
-async function refreshAuditLogs() {
-  const container = document.querySelector("#audit-logs");
-  try {
-    const response = await fetch("/api/admin/audit-logs?limit=50", { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    container.innerHTML = data.records.length
-      ? `<div class="audit-table-wrap"><table><thead><tr><th>時間</th><th>隊伍 / 操作</th><th>狀態</th><th>結果</th><th>來源</th></tr></thead><tbody>${data.records.map(auditRow).join("")}</tbody></table></div>`
-      : "<p>尚無操作紀錄</p>";
-  } catch (error) {
-    container.textContent = `無法取得操作紀錄：${error.message}`;
-  }
-}
-
 async function refresh() {
   const status = document.querySelector("#overall-status");
   try {
@@ -90,7 +65,6 @@ async function control(target, action) {
   ).join("\n");
   window.alert(`${data.overall === "success" ? "操作完成" : data.overall === "partial" ? "部分成功" : "操作失敗"}\n${summary}`);
   await refresh();
-  await refreshAuditLogs();
 }
 
 document.querySelector('[data-target="ALL"]').innerHTML = actionButtons("ALL");
@@ -101,6 +75,4 @@ document.addEventListener("click", (event) => {
 });
 
 refresh();
-refreshAuditLogs();
 setInterval(refresh, 5000);
-setInterval(refreshAuditLogs, 5000);
