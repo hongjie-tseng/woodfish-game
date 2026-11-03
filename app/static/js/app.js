@@ -74,17 +74,17 @@ function playWoodfishSound() {
     }
     audioContext.resume();
     const now = audioContext.currentTime;
-    [520, 760].forEach((frequency, index) => {
+    [145, 215].forEach((frequency, index) => {
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
       oscillator.type = index ? "triangle" : "sine";
       oscillator.frequency.setValueAtTime(frequency, now);
-      oscillator.frequency.exponentialRampToValueAtTime(frequency * .72, now + .16);
-      gain.gain.setValueAtTime(index ? .09 : .16, now);
-      gain.gain.exponentialRampToValueAtTime(.001, now + .18);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency * .48, now + .22);
+      gain.gain.setValueAtTime(index ? .12 : .2, now);
+      gain.gain.exponentialRampToValueAtTime(.001, now + .24);
       oscillator.connect(gain).connect(audioContext.destination);
       oscillator.start(now);
-      oscillator.stop(now + .2);
+      oscillator.stop(now + .26);
     });
   } catch {
     // Audio is an enhancement; it must never block a tap request.

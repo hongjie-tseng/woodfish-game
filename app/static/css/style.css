@@ -1,7 +1,7 @@
 :root { color-scheme: dark; font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif; }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% 20%, #5b341d, #1d120e 70%); color: #fff7ed; }
-.game-shell { width: min(100%, 560px); min-height: 100vh; margin: auto; padding: 7vh 22px 32px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.game-shell { width: min(100%, 390px); min-height: 100dvh; margin: auto; padding: max(24px, 5dvh) 18px 22px; text-align: center; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
 .eyebrow { margin: 0 0 8px; color: #fbbf24; letter-spacing: .12em; font-size: .85rem; }
 h1 { margin: 0 0 12px; font-size: clamp(2rem, 9vw, 3.2rem); }
 .status { padding: 5px 12px; border-radius: 999px; font-size: .8rem; }
@@ -9,14 +9,20 @@ h1 { margin: 0 0 12px; font-size: clamp(2rem, 9vw, 3.2rem); }
 .scoreboard { width: 100%; margin: 26px 0 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .scoreboard div { padding: 12px 4px; background: #ffffff12; border: 1px solid #ffffff1f; border-radius: 14px; }
 .scoreboard strong, .scoreboard span { display: block; }.scoreboard strong { font-size: 1.7rem; color: #fbbf24; }.scoreboard span { font-size: .75rem; color: #fed7aa; }
-.shrine { position: relative; width: min(92vw, 390px); height: min(83vw, 350px); margin-top: 0; }
-.monk { position: absolute; z-index: 0; left: 50%; top: 0; width: 190px; height: 230px; transform: translateX(-50%); transition: transform .1s ease; }
-.monk__halo { position: absolute; left: 31px; top: 2px; width: 128px; height: 128px; border: 5px solid #facc15; border-radius: 50%; opacity: .8; box-shadow: 0 0 24px #facc1555; }
-.monk__head { position: absolute; left: 48px; top: 20px; width: 96px; height: 105px; padding-top: 38px; border-radius: 48% 48% 42% 42%; color: #5b2b13; background: #d8904d; font-size: .75rem; font-weight: 900; box-shadow: inset -8px -8px 0 #9c542b55; }
-.monk__eyes { position: absolute; top: 72px; left: 70px; display: flex; gap: 31px; }.monk__eyes i { width: 7px; height: 4px; background: #3b1f0b; border-radius: 50%; }
-.monk__mouth { position: absolute; top: 83px; left: 91px; color: #7f1d1d; font-weight: 900; }.monk__robe { position: absolute; left: 24px; top: 111px; width: 142px; height: 119px; border-radius: 45% 45% 12px 12px; background: #7f1d1d; box-shadow: inset -16px -10px 0 #450a0a55; }
+.shrine { position: relative; width: 100%; aspect-ratio: 9 / 8.8; margin-top: 0; }
+.monk { position: absolute; z-index: 0; left: 50%; top: 18%; width: 210px; height: 230px; transform: translateX(-50%); transition: transform .1s ease; }
+.monk__halo { position: absolute; left: 34px; top: 12px; width: 142px; height: 142px; border: 4px solid #facc15; border-radius: 50%; opacity: .55; box-shadow: 0 0 24px #facc1555; }
+.monk__head { position: absolute; z-index: 2; left: 49px; top: 28px; width: 112px; height: 116px; border-radius: 48% 48% 44% 44%; background: linear-gradient(110deg, #e8ad70 0%, #c87943 72%, #a95b32 100%); box-shadow: inset -9px -8px 0 #8e472d33, 3px 5px 8px #2b100855; }
+.monk__head::before { content: ""; position: absolute; left: 19px; top: -11px; width: 74px; height: 34px; border-radius: 50%; background: #d9985d; box-shadow: inset 0 -7px 8px #9b55333d; }
+.monk__ear { position: absolute; top: 48px; width: 20px; height: 34px; border-radius: 50%; background: #c87943; }.monk__ear--left { left: -12px; }.monk__ear--right { right: -12px; }
+.monk__brow { position: absolute; top: 49px; width: 25px; height: 6px; border-top: 3px solid #75402d; border-radius: 50%; }.monk__brow--left { left: 23px; transform: rotate(-5deg); }.monk__brow--right { right: 23px; transform: rotate(5deg); }
+.monk__eyes { position: absolute; top: 61px; left: 30px; display: flex; gap: 30px; }.monk__eyes i { width: 8px; height: 4px; background: #3b1f0b; border-radius: 50%; }
+.monk__nose { position: absolute; left: 51px; top: 60px; width: 12px; height: 22px; border-right: 2px solid #9a512f; border-bottom: 2px solid #9a512f; border-radius: 0 0 10px 0; }
+.monk__mouth { position: absolute; top: 81px; left: 51px; color: #7f1d1d; font-weight: 900; font-size: 15px; }.monk__beard { position: absolute; left: 29px; top: 84px; width: 54px; height: 25px; border-radius: 20% 20% 60% 60%; background: #eee1c6; opacity: .9; clip-path: polygon(0 0, 100% 0, 78% 100%, 54% 72%, 28% 100%); }
+.monk__robe { position: absolute; left: 19px; top: 128px; width: 164px; height: 125px; border-radius: 45% 45% 12px 12px; background: linear-gradient(100deg, #9e2f2f, #671820); box-shadow: inset -16px -10px 0 #450a0a55; }
+.woodfish { position: absolute; z-index: 3; left: 50%; top: -2%; transform: translateX(-50%); width: min(54vw, 205px); aspect-ratio: 1.18; border: 0; border-radius: 50% 50% 45% 45%; color: #3b1f0b; background: radial-gradient(circle at 38% 30%, #f6c477, #a9511c 68%, #6f2d13); box-shadow: inset -12px -14px 18px #3b160c80, 0 11px 20px #0008; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .08s ease; }
 .woodfish { position: absolute; z-index: 2; left: 50%; bottom: 0; transform: translateX(-50%); width: min(70vw, 280px); aspect-ratio: 1; border: 0; border-radius: 48% 52% 50% 50%; color: #3b1f0b; background: radial-gradient(circle at 38% 30%, #f6c477, #a9511c 68%, #6f2d13); box-shadow: inset -14px -18px 22px #3b160c80, 0 18px 30px #0008; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .08s ease; }
-.woodfish:active, .woodfish.is-tapped { transform: scale(.94) rotate(-2deg); }.woodfish__body { display: block; font-size: clamp(2.2rem, 11vw, 4rem); font-weight: 900; text-shadow: 1px 2px #f6c47766; }.woodfish__mark { font-size: 5rem; opacity: .35; }
+.woodfish:active, .woodfish.is-tapped { transform: translateX(-50%) scale(.94) rotate(-2deg); }.woodfish__body { display: block; font-size: clamp(2.2rem, 11vw, 4rem); font-weight: 900; text-shadow: 1px 2px #f6c47766; }.woodfish__mark { font-size: 5rem; opacity: .35; }
 .monk.is-hit { animation: monk-hit .22s ease; }.merit-layer { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
 .merit { position: absolute; left: 50%; bottom: 34%; color: #fde047; font-size: 1.35rem; font-weight: 900; text-shadow: 2px 2px #7c2d12; animation: merit-float .9s ease-out forwards; }
 .round-label { margin: 4px 0 0; color: #fde68a; }.message { min-height: 1.5em; margin: 8px 0; color: #fed7aa; font-size: .9rem; }
