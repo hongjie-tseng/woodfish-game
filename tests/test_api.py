@@ -68,6 +68,7 @@ def test_version_endpoint_and_index_cache_headers(tmp_path, monkeypatch):
     assert "commit" in version.json()
     assert index.headers["cache-control"] == "no-store, max-age=0"
     assert "__ASSET_VERSION__" not in index.text
+    assert 'class="connection connection--pending">連線中</span>' in index.text
 
 
 def test_paused_round_rejects_taps(tmp_path, monkeypatch):

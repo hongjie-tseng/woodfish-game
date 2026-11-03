@@ -6,7 +6,7 @@ body { min-height: 100dvh; overflow: hidden; }
 .topbar { display: flex; justify-content: flex-end; }
 .topbar__right { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 76px; }
 .team-badge { padding: 7px 15px; border-radius: 999px; background: #eee8e2; color: #6f6259; font-size: .9rem; line-height: 1; }
-.connection { color: #71a178; font-size: .83rem; line-height: 1; }.connection--ok { color: #71a178; }.connection--error { color: #bd806a; }.connection--pending { color: #71a178; }
+.connection { color: #9c9187; font-size: .83rem; line-height: 1; }.connection--ok { color: #71a178; }.connection--error { color: #bd806a; }.connection--pending { color: #9c9187; }
 .score { margin: clamp(30px, 5dvh, 58px) 0 0; text-align: center; }.score__label { display: block; color: var(--muted); font-size: 1rem; }.score strong { display: block; margin: 3px 0 8px; color: #4b4038; font-size: clamp(4.6rem, 19vw, 6.7rem); font-weight: 600; line-height: .86; letter-spacing: -.08em; }.score__sub { display: flex; justify-content: center; align-items: center; color: var(--muted); font-size: .93rem; white-space: nowrap; }.score__sub b { color: #514840; font-weight: 600; }
 .scene-button { position: relative; display: block; width: min(100%, 390px); aspect-ratio: 755 / 670; margin: clamp(24px, 4dvh, 46px) auto 0; padding: 0; border: 0; background: transparent; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .scene-mount, .art-layer { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }.scene-mount { overflow: visible; }.art-layer { object-fit: contain; pointer-events: none; }
