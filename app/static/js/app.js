@@ -1,9 +1,7 @@
 const playerKey = "woodfish-player-id";
 const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
-let muted = false;
-let audioContext;
-let noiseBuffer;
+let woodfishAudio;
 let meritSequence = 0;
 const tapAttempts = new Map();
 const tapMetrics = [];
@@ -92,16 +90,11 @@ async function sendTap(item) {
 }
 
 function prepareAudio() {
-  if (audioContext) return true;
+  if (woodfishAudio) return true;
   try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) throw new Error("Web Audio API is unavailable");
-    audioContext = new AudioContextClass();
-    noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * .22, audioContext.sampleRate);
-    const samples = noiseBuffer.getChannelData(0);
-    for (let index = 0; index < samples.length; index += 1) {
-      samples[index] = (Math.random() * 2 - 1) * Math.exp(-index / (audioContext.sampleRate * .018));
-    }
+    woodfishAudio = new Audio("/static/assets/woodfish-hit.wav");
+    woodfishAudio.preload = "auto";
+    woodfishAudio.volume = .65;
     return true;
   } catch {
     if (!audioWarningShown) {
@@ -113,55 +106,20 @@ function prepareAudio() {
 }
 
 function playWoodfishSound() {
-  if (muted) return null;
   if (!prepareAudio()) return null;
   try {
-    if (audioContext.state === "suspended") {
-      audioContext.resume().catch(() => {
+    const sound = woodfishAudio.cloneNode();
+    sound.volume = woodfishAudio.volume;
+    sound.currentTime = 0;
+    const playResult = sound.play();
+    if (playResult) {
+      playResult.catch(() => {
         if (!audioWarningShown) {
-          console.warn("Woodfish audio context could not resume");
+          console.warn("Woodfish media audio could not be played");
           audioWarningShown = true;
         }
       });
     }
-    window.__woodfishAudioState = audioContext.state;
-    const now = audioContext.currentTime + .005;
-    const output = audioContext.createGain();
-    const compressor = audioContext.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-18, now);
-    compressor.knee.setValueAtTime(12, now);
-    compressor.ratio.setValueAtTime(5, now);
-    compressor.attack.setValueAtTime(.001, now);
-    compressor.release.setValueAtTime(.08, now);
-    output.gain.setValueAtTime(.8, now);
-    output.connect(compressor).connect(audioContext.destination);
-
-    const transient = audioContext.createBufferSource();
-    const transientFilter = audioContext.createBiquadFilter();
-    const transientGain = audioContext.createGain();
-    transient.buffer = noiseBuffer;
-    transientFilter.type = "bandpass";
-    transientFilter.frequency.setValueAtTime(1800, now);
-    transientFilter.Q.setValueAtTime(.9, now);
-    transientGain.gain.setValueAtTime(.001, now);
-    transientGain.gain.linearRampToValueAtTime(.22, now + .002);
-    transientGain.gain.exponentialRampToValueAtTime(.001, now + .095);
-    transient.connect(transientFilter).connect(transientGain).connect(output);
-    transient.start(now);
-    transient.stop(now + .11);
-
-    [520, 840, 1320].forEach((frequency, index) => {
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      oscillator.type = index === 2 ? "sine" : "triangle";
-      oscillator.frequency.setValueAtTime(frequency * (1 + (Math.random() - .5) * .025), now);
-      gain.gain.setValueAtTime(.001, now);
-      gain.gain.linearRampToValueAtTime([.16, .1, .055][index], now + .003);
-      gain.gain.exponentialRampToValueAtTime(.001, now + [.19, .16, .13][index]);
-      oscillator.connect(gain).connect(output);
-      oscillator.start(now);
-      oscillator.stop(now + .21);
-    });
     return performance.now();
   } catch {
     if (!audioWarningShown) {

@@ -16,6 +16,8 @@ python -m uvicorn app.main:app --reload
 
 頁面右下角會顯示 `VERSION` 與執行中 Git Commit 短 SHA。`GET /api/version` 也會回傳相同資訊；Git 資訊無法取得時會顯示 `unknown`，不會使用假 SHA。
 
+玩家敲擊音效目前使用專案內的 `app/static/assets/woodfish-hit.wav`，透過點擊事件內的 HTML media `play()` 播放，不使用通知 API 或 Web Audio oscillator。音效開關暫時隱藏，待手機媒體音量與相容性驗證完成後再恢復。
+
 ### Zabbix HTTP 敲擊請求監控
 
 每台 Game Server 提供唯讀 `GET /api/metrics`。回應中的 `tap_requests_total` 是該台伺服器實際收到的 `POST /api/tap` HTTP 請求累積數，包含成功、失敗、重複與請求格式驗證失敗；它不是功德數、TCP 封包數或流量 Bytes。

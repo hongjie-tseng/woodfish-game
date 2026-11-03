@@ -35,7 +35,7 @@
 - 每次敲擊發送一個真實 `POST /api/tap`，使用唯一 `tap_id`。
 - 個人功德、全隊功德與連線狀態。
 - 木魚受擊壓縮/回彈動畫與功德浮動文字。
-- Web Audio 木魚音效與音效開關。
+- 本地 WAV 木魚音效，透過 HTML media 播放；音效開關目前暫時隱藏，待手機媒體音量與相容性驗證完成後恢復。
 - FastAPI、SQLite、回合 CLI 管理及基本自動化測試。
 - 相對 API 路徑，適合 Cloudflare Tunnel 部署。
 - Zabbix/ntopng 流量監控實驗用途的部署文件與負載測試工具。
@@ -43,7 +43,7 @@
 
 ### 待驗證
 
-- iPhone Safari/Chrome 實機音效播放，尤其首次觸控與靜音狀態。
+- iPhone Safari/Chrome 實機媒體音效播放，尤其首次觸控、媒體音量與靜音狀態。
 - 兩台 Ubuntu VM 重新部署後的 `/api/version` SHA 是否一致。
 - Cloudflare Tunnel 下手機重新整理是否取得最新 HTML、CSS、JavaScript。
 - Zabbix 與 ntopng 實際可觀察到的流量、協定與封包限制。

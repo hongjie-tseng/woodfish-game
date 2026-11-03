@@ -51,6 +51,14 @@ def test_metrics_counts_success_duplicate_and_failed_tap_requests(tmp_path, monk
     assert metrics.headers["cache-control"] == "no-store, max-age=0"
 
 
+def test_media_woodfish_sound_is_served(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    sound = client.get("/static/assets/woodfish-hit.wav")
+    assert sound.status_code == 200
+    assert sound.headers["content-type"].startswith("audio/wav")
+    assert len(sound.content) > 1000
+
+
 def test_version_endpoint_and_index_cache_headers(tmp_path, monkeypatch):
     client, main = make_client(tmp_path, monkeypatch)
     version = client.get("/api/version")
