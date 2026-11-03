@@ -1,12 +1,14 @@
 const playerKey = "woodfish-player-id";
 const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
-const pending = [];
-let sending = false;
 let muted = false;
 let audioContext;
 let noiseBuffer;
 let meritSequence = 0;
+const tapAttempts = new Map();
+const tapMetrics = [];
+const maxTapAttempts = 3;
+let audioWarningShown = false;
 const $ = (id) => document.getElementById(id);
 
 function setConnection(text, status) {
@@ -20,9 +22,15 @@ function render(stats) {
 }
 
 async function load(url, options = {}) {
-  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function refresh() {
@@ -40,42 +48,73 @@ async function refresh() {
   }
 }
 
-async function drain() {
-  if (sending || pending.length === 0) return;
-  sending = true;
-  const item = pending[0];
+async function sendTap(item) {
+  const startedAt = performance.now();
+  item.attempt = (tapAttempts.get(item.tap_id) || 0) + 1;
+  tapAttempts.set(item.tap_id, item.attempt);
   try {
     const result = await load("/api/tap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item),
+      body: JSON.stringify({ tap_id: item.tap_id, player_id: item.player_id }),
     });
-    pending.shift();
+    tapAttempts.delete(item.tap_id);
+    item.responseAt = performance.now();
+    tapMetrics.push({
+      tapId: item.tap_id,
+      animationDelay: item.animationAt - item.startedAt,
+      soundDelay: item.soundAt - item.startedAt,
+      requestRoundTrip: item.responseAt - startedAt,
+      confirmationDelay: item.responseAt - item.startedAt,
+    });
+    window.__woodfishTapMetrics = tapMetrics.slice(-20);
     render(result);
     setConnection("已連線", "ok");
   } catch {
     setConnection("暫時離線", "error");
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  } finally {
-    sending = false;
-    drain();
+    if (item.attempt < maxTapAttempts) {
+      setTimeout(() => sendTap(item), 500 * item.attempt);
+    } else {
+      tapAttempts.delete(item.tap_id);
+      console.warn("Woodfish tap request failed after retries", item.tap_id);
+    }
+  }
+}
+
+function prepareAudio() {
+  if (audioContext) return true;
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("Web Audio API is unavailable");
+    audioContext = new AudioContextClass();
+    noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * .22, audioContext.sampleRate);
+    const samples = noiseBuffer.getChannelData(0);
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] = (Math.random() * 2 - 1) * Math.exp(-index / (audioContext.sampleRate * .018));
+    }
+    return true;
+  } catch {
+    if (!audioWarningShown) {
+      console.warn("Woodfish audio is unavailable");
+      audioWarningShown = true;
+    }
+    return false;
   }
 }
 
 function playWoodfishSound() {
-  if (muted) return;
+  if (muted) return null;
+  if (!prepareAudio()) return null;
   try {
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(() => {
+        if (!audioWarningShown) {
+          console.warn("Woodfish audio context could not resume");
+          audioWarningShown = true;
+        }
+      });
     }
-    audioContext.resume();
-    if (!noiseBuffer) {
-      noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * .22, audioContext.sampleRate);
-      const samples = noiseBuffer.getChannelData(0);
-      for (let index = 0; index < samples.length; index += 1) {
-        samples[index] = (Math.random() * 2 - 1) * Math.exp(-index / (audioContext.sampleRate * .018));
-      }
-    }
+    window.__woodfishAudioState = audioContext.state;
     const now = audioContext.currentTime + .005;
     const output = audioContext.createGain();
     const compressor = audioContext.createDynamicsCompressor();
@@ -113,8 +152,13 @@ function playWoodfishSound() {
       oscillator.start(now);
       oscillator.stop(now + .21);
     });
+    return performance.now();
   } catch {
-    // Audio is an enhancement; it must never block a tap request.
+    if (!audioWarningShown) {
+      console.warn("Woodfish audio could not be started");
+      audioWarningShown = true;
+    }
+    return null;
   }
 }
 
@@ -127,14 +171,23 @@ function showMerit() {
   setTimeout(() => merit.remove(), 700);
 }
 
-$("tap-area").addEventListener("pointerdown", () => {
+$("tap-area").addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  const startedAt = performance.now();
   $("tap-area").classList.remove("is-hitting");
   void $("tap-area").offsetWidth;
   $("tap-area").classList.add("is-hitting");
-  setTimeout(playWoodfishSound, 155);
+  const animationAt = performance.now();
+  const soundAt = playWoodfishSound() || performance.now();
+  const item = {
+    tap_id: crypto.randomUUID(),
+    player_id: playerId,
+    startedAt,
+    animationAt,
+    soundAt,
+  };
   showMerit();
-  pending.push({ tap_id: crypto.randomUUID(), player_id: playerId });
-  drain();
+  sendTap(item);
 });
 $("sound-toggle").addEventListener("click", () => {
   muted = !muted;
@@ -143,3 +196,4 @@ $("sound-toggle").addEventListener("click", () => {
 });
 refresh();
 setInterval(refresh, 2000);
+prepareAudio();
