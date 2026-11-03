@@ -98,6 +98,18 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 - VM 1 管理服務使用 `systemd/woodfish-admin.service.example`，獨立於既有 `woodfish.service`。
 - 近期敲擊速率由 VM 1 對真實伺服器回報的計數樣本計算，存於管理服務記憶體；服務重啟後先顯示待建立樣本，不使用模擬值。
 
+## 管理操作稽核日誌
+
+- A、B 各自的 SQLite 使用 `admin_audit_logs` 保存操作紀錄，資料不跨伺服器同步。
+- 管理 API 的 `start`、`pause`、`resume`、`end`、`reset`、拒絕的狀態操作，以及 `system_startup` 和 CLI `internal` 操作都必須記錄。
+- 欄位包含 `id`、UTC `timestamp`、`team_id`、`action`、`previous_status`、`new_status`、`source`、`source_ip`、`success`、`error_message`、`git_commit` 與 `state_initialized`。
+- 狀態更新與成功稽核紀錄在同一 SQLite transaction；拒絕操作也會先提交失敗紀錄，再回傳 HTTP 409。
+- FastAPI 啟動只讀取 SQLite 已保存的回合狀態並記錄 `system_startup`，不會無條件套用 `.env` 的 `ROUND_STATUS`。
+- `GET /api/admin/audit-logs?limit=50` 是唯讀查詢，limit 範圍為 1 到 200，依時間新到舊排序；VM 1 的同名 API 會合併 A、B 最近事件。
+- 日誌最多保留 10,000 筆；重設功德只清除功德、玩家與已處理敲擊資料，不清除稽核日誌或 `tap_requests_total`。
+- 排查遊戲停止計數時，先查詢最後事件的 `source`、`action` 與狀態轉換；`admin_api` 是集中管理操作，`system_startup` 是服務啟動，`internal` 是 CLI 或程式內部操作。
+- 正式部署前應停止服務並備份 `woodfish.db`；migration 只建立表格/索引與必要欄位，不得刪除、重建或單獨刪除 SQLite 的 `-wal`、`-shm` 檔案。還原前也必須先停止服務並保留正確擁有者。
+
 ## 三台 VM SSH 自動部署需求
 
 - Windows VS Code 為部署控制端；GitHub `main` 是唯一部署來源。

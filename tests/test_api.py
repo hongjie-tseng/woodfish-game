@@ -91,6 +91,24 @@ def test_admin_status_and_round_actions_are_available_to_proxy(tmp_path, monkeyp
     response = client.post("/api/admin/round/resume", json={})
     assert response.status_code == 200
     assert response.json()["round_status"] == "active"
+    logs = client.get("/api/admin/audit-logs?limit=10")
+    assert logs.status_code == 200
+    assert [(item["action"], item["previous_status"], item["new_status"]) for item in logs.json()[:2]] == [
+        ("resume", "paused", "active"),
+        ("pause", "active", "paused"),
+    ]
+
+
+def test_rejected_admin_action_is_audited(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    assert client.post("/api/admin/round/pause", json={}).status_code == 200
+    response = client.post("/api/admin/round/pause", json={})
+    assert response.status_code == 409
+    log = client.get("/api/admin/audit-logs?limit=1").json()[0]
+    assert log["action"] == "pause"
+    assert log["success"] is False
+    assert log["previous_status"] == "paused"
+    assert "Cannot pause" in log["error_message"]
 
 
 def test_admin_api_rejects_non_monitor_source(tmp_path, monkeypatch):
@@ -119,3 +137,61 @@ def test_admin_reset_clears_team_and_all_player_scores(tmp_path, monkeypatch):
     assert client.get("/api/stats?player_id=reset-player-a").json()["personal_taps"] == 0
     assert client.get("/api/stats?player_id=reset-player-b").json()["personal_taps"] == 0
     assert client.get("/api/metrics").json()["tap_requests_total"] == 2
+    logs = client.get("/api/admin/audit-logs?limit=1").json()
+    assert logs[0]["action"] == "reset"
+    assert logs[0]["success"] is True
+
+
+def test_database_migration_preserves_existing_state_and_metrics(tmp_path, monkeypatch):
+    database_path = tmp_path / "legacy.db"
+    import sqlite3
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE game_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                total_taps INTEGER NOT NULL DEFAULT 0,
+                round_taps INTEGER NOT NULL DEFAULT 0,
+                tap_requests_total INTEGER NOT NULL DEFAULT 0,
+                round_name TEXT NOT NULL DEFAULT '課堂展示回合',
+                round_status TEXT NOT NULL DEFAULT 'active',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO game_state (id, total_taps, round_taps, tap_requests_total, round_status)
+            VALUES (1, 12, 4, 99, 'paused');
+            """
+        )
+    client, _ = make_client(tmp_path, monkeypatch)
+    with client:
+        pass
+    import app.main
+
+    app.main.initialize_database(str(database_path))
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            "SELECT total_taps, round_taps, round_status, tap_requests_total FROM game_state WHERE id = 1"
+        ).fetchone()
+        assert row == (12, 4, "paused", 99)
+        assert connection.execute("SELECT COUNT(*) FROM admin_audit_logs").fetchone()[0] == 0
+
+
+def test_startup_preserves_status_and_records_event(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    with main.transaction(main.settings.database_path) as connection:
+        connection.execute("UPDATE game_state SET round_status = 'paused' WHERE id = 1")
+    with client:
+        pass
+    with main.connect(main.settings.database_path) as connection:
+        row = connection.execute(
+            "SELECT action, previous_status, new_status, source, success, error_message "
+            "FROM admin_audit_logs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert tuple(row) == (
+        "startup",
+        "paused",
+        "paused",
+        "system_startup",
+        1,
+        "Persisted round status; no startup override applied",
+    )
