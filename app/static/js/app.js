@@ -17,7 +17,11 @@ function render(stats) {
   $("personal-taps").textContent = stats.personal_taps;
   $("team-taps").textContent = stats.team_taps;
   $("round-taps").textContent = stats.round_taps;
-  $("round-label").textContent = `${stats.round_name} · ${stats.round_status === "active" ? "進行中" : "已結束"}`;
+  if (stats.round_name) {
+    $("round-label").dataset.roundName = stats.round_name;
+  }
+  const roundName = $("round-label").dataset.roundName || "目前回合";
+  $("round-label").textContent = `${roundName} · ${stats.round_status === "active" ? "進行中" : "已結束"}`;
 }
 
 async function load(url, options = {}) {

@@ -10,10 +10,6 @@
 <body>
   <main class="game-shell">
     <header class="topbar">
-      <div>
-        <p class="eyebrow">每日修行</p>
-        <h1>電子敲木魚</h1>
-      </div>
       <div class="topbar__right">
         <span id="team-name" class="team-badge">連線中</span>
         <span id="connection" class="connection connection--pending">連線中</span>
@@ -23,7 +19,7 @@
     <section class="score" aria-label="功德統計">
       <span class="score__label">我的功德</span>
       <strong id="personal-taps">0</strong>
-      <span class="score__sub">全隊 <b id="team-taps">0</b> ・ 本回合 <b id="round-taps">0</b></span>
+      <span class="score__sub">全隊功德 <b id="team-taps">0</b> ・ 本回合功德 <b id="round-taps">0</b></span>
     </section>
 
     <button id="tap-area" class="scene-button" type="button" aria-label="敲擊木魚">
@@ -36,42 +32,40 @@
             <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
         </defs>
-        <ellipse class="ground-shadow" cx="178" cy="414" rx="122" ry="15"/>
-        <g id="monk-left" class="monk-left" filter="url(#soft-shadow)">
-          <path class="robe robe-left" d="M37 376c8-39 33-61 72-61 41 0 66 25 72 61l-7 32H42z"/>
-          <path class="robe-fold" d="M92 320c-12 30-7 61 10 88M126 320c16 26 20 57 7 87"/>
-          <ellipse class="foot" cx="65" cy="402" rx="30" ry="11"/>
-          <ellipse class="foot" cx="139" cy="402" rx="30" ry="11"/>
-          <path class="hands" d="M76 339c12 5 20 5 32 0M115 339c12 5 20 5 32 0"/>
-          <ellipse class="head" cx="108" cy="275" rx="57" ry="64"/>
-          <path class="ear" d="M53 264c-18-8-20 21-4 28M163 264c18-8 20 21 4 28"/>
-          <path class="brow" d="M77 265q9-7 18 0M120 265q9-7 18 0"/>
-          <path class="closed-eye" d="M79 278q7 6 14 0M121 278q7 6 14 0"/>
-          <path class="nose" d="M108 280v12l-7 3"/>
-          <path class="smile" d="M99 307q9 8 18 0"/>
-          <path class="cheek" d="M68 294h10M138 294h10"/>
-        </g>
+        <ellipse class="ground-shadow" cx="174" cy="409" rx="151" ry="13"/>
         <g id="wooden-fish" class="wooden-fish" filter="url(#soft-shadow)">
-          <path class="fish-body" d="M59 190c17-44 53-62 91-50 38 12 55 49 42 81-13 32-52 45-94 36l-31-10-15 7-10-9 10-14z"/>
-          <path class="fish-opening" d="M66 220c26-3 54-22 87-39"/>
-          <path class="fish-highlight" d="M116 154q24 2 38 15"/>
+          <path class="fish-body" d="M19 362c12-48 38-74 76-74 39 0 60 29 54 62-6 35-45 54-83 48l-31-8-17 8-10-11 11-13z"/>
+          <path class="fish-opening" d="M28 384c28-7 54-27 90-48"/>
+          <path class="fish-highlight" d="M74 303q28 4 43 18"/>
+        </g>
+        <g id="monk-left" class="monk-left" filter="url(#soft-shadow)">
+          <path class="robe robe-left" d="M113 385c2-37 18-56 44-56 29 0 42 22 45 56l-4 25h-84z"/>
+          <path class="robe-fold" d="M143 336c-7 22-4 50 6 72"/>
+          <ellipse class="foot" cx="132" cy="406" rx="27" ry="9"/>
+          <ellipse class="foot" cx="181" cy="406" rx="27" ry="9"/>
+          <ellipse class="head" cx="160" cy="319" rx="34" ry="39"/>
+          <path class="ear" d="M128 311c-13-5-13 15-2 19M192 311c13-5 13 15 2 19"/>
+          <path class="closed-eye" d="M146 321q5 5 10 0M166 321q5 5 10 0"/>
+          <path class="smile" d="M153 337q7 6 14 0"/>
+          <g id="small-arm" class="small-arm"><path class="sleeve" d="M144 351c-15 5-24-2-34-16l9-7c11 9 18 10 29 5z"/><path class="arm-skin" d="M116 337l-18-22 6-5 22 20z"/></g>
         </g>
         <g id="monk-right" class="monk-right" filter="url(#soft-shadow)">
-          <path class="robe robe-right" d="M218 351c10-42 32-58 66-58 32 0 52 21 57 58l-8 47h-115z"/>
-          <path class="robe-fold" d="M259 300c-11 38-5 72 11 98M286 301c15 28 17 63 8 96"/>
-          <ellipse class="foot" cx="242" cy="404" rx="27" ry="10"/>
-          <ellipse class="foot" cx="315" cy="404" rx="27" ry="10"/>
-          <ellipse class="head" cx="277" cy="248" rx="45" ry="52"/>
-          <path class="ear" d="M234 240c-15-6-16 17-3 23M320 240c15-6 16 17 3 23"/>
-          <path class="brow" d="M254 239q7-5 14 0M284 239q7-5 14 0"/>
-          <path class="closed-eye" d="M255 250q6 5 12 0M286 250q6 5 12 0"/>
-          <path class="smile" d="M267 274q9 7 18 0"/>
+          <path class="robe robe-right" d="M203 357c9-52 43-75 87-75 48 0 75 31 82 75l-5 55H207z"/>
+          <path class="robe-fold" d="M255 288c-12 39-8 85 10 122M295 288c18 41 21 84 11 121"/>
+          <ellipse class="foot" cx="245" cy="410" rx="39" ry="11"/>
+          <ellipse class="foot" cx="343" cy="410" rx="42" ry="11"/>
+          <ellipse class="head" cx="286" cy="175" rx="65" ry="76"/>
+          <path class="ear" d="M223 166c-19-8-20 22-4 29M349 166c19-8 20 22 4 29"/>
+          <path class="brow" d="M254 165q10-8 20 0M296 165q10-8 20 0"/>
+          <path class="closed-eye" d="M256 180q8 7 16 0M300 180q8 7 16 0"/>
+          <path class="nose" d="M286 183v15l-9 4"/>
+          <path class="smile" d="M274 215q12 10 24 0"/>
           <g id="arm" class="arm">
-            <path class="sleeve" d="M246 302c-19 4-36-5-49-25l17-12c13 11 26 14 39 8z"/>
-            <path class="arm-skin" d="M207 277l-29-39 9-7 34 36z"/>
+            <path class="sleeve" d="M244 257c-22 6-46-5-65-29l18-15c18 16 31 19 47 10z"/>
+            <path class="arm-skin" d="M187 228l-51-57 12-10 56 50z"/>
             <g id="mallet" class="mallet">
-              <rect class="mallet-handle" x="170" y="214" width="9" height="70" rx="4" transform="rotate(-37 174 249)"/>
-              <circle class="mallet-head" cx="157" cy="208" r="17"/>
+              <rect class="mallet-handle" x="124" y="157" width="10" height="92" rx="5" transform="rotate(-42 129 203)"/>
+              <circle class="mallet-head" cx="104" cy="143" r="20"/>
             </g>
           </g>
         </g>
