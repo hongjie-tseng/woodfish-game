@@ -17,11 +17,6 @@ function render(stats) {
   $("personal-taps").textContent = stats.personal_taps;
   $("team-taps").textContent = stats.team_taps;
   $("round-taps").textContent = stats.round_taps;
-  if (stats.round_name) {
-    $("round-label").dataset.roundName = stats.round_name;
-  }
-  const roundName = $("round-label").dataset.roundName || "目前回合";
-  $("round-label").textContent = `${roundName} · ${stats.round_status === "active" ? "進行中" : "已結束"}`;
 }
 
 async function load(url, options = {}) {
@@ -58,10 +53,8 @@ async function drain() {
     pending.shift();
     render(result);
     setConnection("已連線", "ok");
-    $("message").textContent = pending.length ? `已確認，還有 ${pending.length} 次等待中` : "敲擊已確認";
   } catch {
     setConnection("暫時離線", "error");
-    $("message").textContent = "敲擊尚未確認，將自動重試";
     await new Promise((resolve) => setTimeout(resolve, 1000));
   } finally {
     sending = false;
@@ -110,9 +103,7 @@ $("tap-area").addEventListener("pointerdown", () => {
   playWoodfishSound();
   showMerit();
   if (pending.length >= 8 && (pending.length % 5 === 0 || Math.random() < .18)) {
-    $("message").textContent = monkQuotes[Math.floor(Math.random() * monkQuotes.length)];
-  } else {
-    $("message").textContent = "功德 +1，和尚表示頭很痛";
+    $("tap-area").setAttribute("aria-label", monkQuotes[Math.floor(Math.random() * monkQuotes.length)]);
   }
   pending.push({ tap_id: crypto.randomUUID(), player_id: playerId });
   drain();
