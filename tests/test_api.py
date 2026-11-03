@@ -77,3 +77,20 @@ def test_admin_api_rejects_non_monitor_source(tmp_path, monkeypatch):
     app.config.get_settings.cache_clear()
     app.main.settings = app.config.get_settings()
     assert client.get("/api/admin/status").status_code == 403
+
+
+def test_admin_reset_clears_team_and_all_player_scores(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    for tap_id, player_id in (("reset-tap-a", "reset-player-a"), ("reset-tap-b", "reset-player-b")):
+        assert client.post(
+            "/api/tap", json={"tap_id": tap_id, "player_id": player_id}
+        ).status_code == 200
+
+    before = client.get("/api/admin/status").json()
+    assert before["team_taps"] == 2
+    response = client.post("/api/admin/round/reset", json={})
+    assert response.status_code == 200
+    assert response.json()["team_taps"] == 0
+    assert response.json()["round_taps"] == 0
+    assert client.get("/api/stats?player_id=reset-player-a").json()["personal_taps"] == 0
+    assert client.get("/api/stats?player_id=reset-player-b").json()["personal_taps"] == 0

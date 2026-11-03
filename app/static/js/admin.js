@@ -55,7 +55,7 @@ async function refresh() {
 }
 
 async function control(target, action) {
-  if (action === "reset" && !window.confirm(`確定要重設${target === "ALL" ? " A、B 兩隊" : `${target} 隊`}本回合功德嗎？`)) return;
+  if (action === "reset" && !window.confirm(`確定要清除${target === "ALL" ? " A、B 兩隊" : `${target} 隊`}的全隊功德與所有玩家個人功德嗎？`)) return;
   const response = await fetch(`/api/admin/control/${target}/${action}`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
   });

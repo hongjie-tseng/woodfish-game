@@ -159,8 +159,14 @@ async def admin_round_action(
             )
         else:
             connection.execute(
-                "UPDATE game_state SET round_taps = 0, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
+                """
+                UPDATE game_state
+                SET total_taps = 0, round_taps = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+                """
             )
+            connection.execute("DELETE FROM player_totals")
+            connection.execute("DELETE FROM processed_taps")
         connection.commit()
     return await admin_status(request)
 

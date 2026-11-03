@@ -79,6 +79,7 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 - 瀏覽器只能呼叫 VM 1 管理服務；VM 1 後端透過內部網路轉送至 A/B，瀏覽器不得直接呼叫 Game Server 管理 API。
 - 管理頁面必須顯示 A/B 真實狀態、全隊功德、回合功德、近期敲擊速率、連線狀態與各自 Commit。
 - 每隊及共同操作都必須支援開始、暫停、繼續、結束與重設功德；重設必須確認。
+- 管理頁的重設功德必須在目標伺服器交易中清除全隊功德、回合功德、所有玩家個人功德與已處理敲擊識別碼，讓所有玩家下一次取得統計時看到 0。
 - 共同操作必須分別確認兩台伺服器結果；只有一隊成功時顯示部分成功，不得假裝全部完成。
 - 管理 API 不使用帳號密碼登入是已知且接受的課堂實驗風險；Game Server 管理 API 僅接受 VM 1 的 `ADMIN_PROXY_IP` 來源。
 - 管理服務不得占用或修改 Zabbix、ntopng（Port 3001）及 Cloudflare Tunnel；目前不自行新增 Cloudflare 公開 route。
