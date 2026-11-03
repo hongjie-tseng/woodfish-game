@@ -64,7 +64,7 @@ function Deploy-One {
     $server = $Servers[$Name]
     Write-Host "`n[$Name] $($server.Host)" -ForegroundColor Cyan
     Assert-RemotePreconditions $Name
-    Invoke-SSH $server.Host "cd $ProjectPath; git pull --ff-only origin main"
+    Invoke-SSH $server.Host "cd $ProjectPath; git pull --quiet --ff-only origin main"
     Invoke-SSH $server.Host "$ProjectPath/.venv/bin/pip install -r $ProjectPath/requirements.txt"
     if ($InteractiveSudo) {
         Invoke-SSH $server.Host "sudo systemctl restart $($server.Service)" -Tty
