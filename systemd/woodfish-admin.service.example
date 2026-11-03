@@ -1,0 +1,17 @@
+[Unit]
+Description=Woodfish centralized administration service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=labuser
+WorkingDirectory=/home/labuser/woodfish-game
+EnvironmentFile=/home/labuser/woodfish-game/.env.admin
+ExecStart=/home/labuser/woodfish-game/.venv/bin/uvicorn app.admin_main:app --host 0.0.0.0 --port 8010
+Restart=always
+RestartSec=3
+SyslogIdentifier=woodfish-admin
+
+[Install]
+WantedBy=multi-user.target

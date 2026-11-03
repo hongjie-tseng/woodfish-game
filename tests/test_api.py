@@ -7,6 +7,7 @@ def make_client(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("TEAM_ID", "TEST")
     monkeypatch.setenv("TEAM_NAME", "測試隊")
+    monkeypatch.setenv("ADMIN_PROXY_IP", "testclient")
     import app.config
     import app.main
     app.config.get_settings.cache_clear()
@@ -53,3 +54,26 @@ def test_paused_round_rejects_taps(tmp_path, monkeypatch):
         connection.commit()
     response = client.post("/api/tap", json={"tap_id": "tap-unique-3", "player_id": "player-unique-3"})
     assert response.status_code == 409
+
+
+def test_admin_status_and_round_actions_are_available_to_proxy(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    status = client.get("/api/admin/status")
+    assert status.status_code == 200
+    assert status.json()["team_name"] == "測試隊"
+    response = client.post("/api/admin/round/pause", json={})
+    assert response.status_code == 200
+    assert response.json()["round_status"] == "paused"
+    response = client.post("/api/admin/round/resume", json={})
+    assert response.status_code == 200
+    assert response.json()["round_status"] == "active"
+
+
+def test_admin_api_rejects_non_monitor_source(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    monkeypatch.setenv("ADMIN_PROXY_IP", "192.168.26.131")
+    import app.config
+    import app.main
+    app.config.get_settings.cache_clear()
+    app.main.settings = app.config.get_settings()
+    assert client.get("/api/admin/status").status_code == 403

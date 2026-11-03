@@ -37,3 +37,19 @@ class ConfigResponse(BaseModel):
 class VersionResponse(BaseModel):
     version: str
     commit: str
+
+
+class RoundActionRequest(BaseModel):
+    name: str | None = None
+
+
+class AdminStatusResponse(BaseModel):
+    team_id: str
+    team_name: str
+    round_name: str
+    round_status: str
+    team_taps: int
+    round_taps: int
+    version: str
+    commit: str
+    server_time: datetime

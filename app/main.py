@@ -11,7 +11,15 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .database import connect, initialize_database, transaction
-from .models import ConfigResponse, StatsResponse, TapRequest, TapResponse, VersionResponse
+from .models import (
+    AdminStatusResponse,
+    ConfigResponse,
+    RoundActionRequest,
+    StatsResponse,
+    TapRequest,
+    TapResponse,
+    VersionResponse,
+)
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -64,6 +72,12 @@ def deployment_token() -> str:
     return commit if commit != "unknown" else project_version()
 
 
+def require_admin_proxy(request: Request) -> None:
+    client_host = request.client.host if request.client else ""
+    if client_host != settings.admin_proxy_ip:
+        raise HTTPException(status_code=403, detail="管理 API 僅接受 VM 1")
+
+
 def current_state(connection, player_id: str) -> dict:
     state = connection.execute("SELECT * FROM game_state WHERE id = 1").fetchone()
     player = connection.execute(
@@ -89,6 +103,66 @@ async def index() -> HTMLResponse:
 async def get_version(response: Response) -> VersionResponse:
     response.headers["Cache-Control"] = "no-store, max-age=0"
     return VersionResponse(version=project_version(), commit=git_commit())
+
+
+@app.get("/api/admin/status", response_model=AdminStatusResponse)
+async def admin_status(request: Request) -> AdminStatusResponse:
+    require_admin_proxy(request)
+    with connect(settings.database_path) as connection:
+        state = connection.execute("SELECT * FROM game_state WHERE id = 1").fetchone()
+    return AdminStatusResponse(
+        team_id=settings.team_id,
+        team_name=settings.team_name,
+        round_name=state["round_name"],
+        round_status=state["round_status"],
+        team_taps=state["total_taps"],
+        round_taps=state["round_taps"],
+        version=project_version(),
+        commit=git_commit(),
+        server_time=datetime.now(timezone.utc),
+    )
+
+
+@app.post("/api/admin/round/{action}", response_model=AdminStatusResponse)
+async def admin_round_action(
+    action: str,
+    request: Request,
+    payload: RoundActionRequest | None = None,
+) -> AdminStatusResponse:
+    require_admin_proxy(request)
+    if action not in {"start", "pause", "resume", "end", "reset"}:
+        raise HTTPException(status_code=404, detail="Unknown round action")
+    with connect(settings.database_path) as connection:
+        if action == "start":
+            connection.execute(
+                """
+                UPDATE game_state
+                SET round_status = 'active',
+                    round_name = COALESCE(?, round_name),
+                    round_taps = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+                """,
+                (payload.name if payload else None,),
+            )
+        elif action == "pause":
+            connection.execute(
+                "UPDATE game_state SET round_status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = 1"
+            )
+        elif action == "resume":
+            connection.execute(
+                "UPDATE game_state SET round_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = 1"
+            )
+        elif action == "end":
+            connection.execute(
+                "UPDATE game_state SET round_status = 'ended', updated_at = CURRENT_TIMESTAMP WHERE id = 1"
+            )
+        else:
+            connection.execute(
+                "UPDATE game_state SET round_taps = 0, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
+            )
+        connection.commit()
+    return await admin_status(request)
 
 
 @app.get("/health")

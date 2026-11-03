@@ -71,3 +71,16 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 ```
 
 回傳的 `version` 與 `commit` 可用來確認兩台伺服器是否執行相同版本。
+
+## A/B 集中管理需求
+
+- Ubuntu-Monitor（VM 1，`192.168.26.131`）提供唯一的集中管理頁面，管理服務使用 Port `8010`。
+- Game-Server-A/B 維持 Port `8000` 與各自獨立的 SQLite；不新增 VM、Docker、Redis 或額外資料庫。
+- 瀏覽器只能呼叫 VM 1 管理服務；VM 1 後端透過內部網路轉送至 A/B，瀏覽器不得直接呼叫 Game Server 管理 API。
+- 管理頁面必須顯示 A/B 真實狀態、全隊功德、回合功德、近期敲擊速率、連線狀態與各自 Commit。
+- 每隊及共同操作都必須支援開始、暫停、繼續、結束與重設功德；重設必須確認。
+- 共同操作必須分別確認兩台伺服器結果；只有一隊成功時顯示部分成功，不得假裝全部完成。
+- 管理 API 不使用帳號密碼登入是已知且接受的課堂實驗風險；Game Server 管理 API 僅接受 VM 1 的 `ADMIN_PROXY_IP` 來源。
+- 管理服務不得占用或修改 Zabbix、ntopng（Port 3001）及 Cloudflare Tunnel；目前不自行新增 Cloudflare 公開 route。
+- VM 1 管理服務使用 `systemd/woodfish-admin.service.example`，獨立於既有 `woodfish.service`。
+- 近期敲擊速率由 VM 1 對真實伺服器回報的計數樣本計算，存於管理服務記憶體；服務重啟後先顯示待建立樣本，不使用模擬值。

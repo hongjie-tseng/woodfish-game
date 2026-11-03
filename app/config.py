@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     round_status: str = "active"
     tap_timeout_seconds: float = 10.0
     max_retry_attempts: int = 3
+    admin_proxy_ip: str = "192.168.26.131"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -29,6 +29,43 @@ python scripts/manage_round.py end
 
 `reset` 只清除本回合計數，保留全隊與個人累積；`start` 會開始新回合並清除本回合計數。
 
+## A/B 集中管理
+
+目前管理頁面由 Ubuntu-Monitor（VM 1，`192.168.26.131:8010`）提供。瀏覽器只連 VM 1，管理服務再透過內部網路呼叫 Game-Server-A（`192.168.26.133:8000`）與 Game-Server-B（`192.168.26.135:8000`）；瀏覽器不直接呼叫兩台遊戲伺服器的管理 API。
+
+管理頁面可顯示兩隊真實狀態、全隊功德、回合功德、近 60 秒敲擊速率、連線狀態與部署 Commit，並支援個別或同時開始、暫停、繼續、結束與重設功德。共同操作會分別回報 A/B 結果；只有一隊成功時會顯示部分成功。重設需要瀏覽器確認。
+
+Game Server 的管理 API 只接受 `ADMIN_PROXY_IP`（預設 `192.168.26.131`）來源，避免玩家端直接控制回合。這不是登入驗證；集中管理無帳號密碼是課堂實驗的已知風險。
+
+### VM 1 安裝管理服務
+
+以下只應在 VM 1 執行，不會修改既有 `woodfish`、Zabbix、ntopng 或 `cloudflared` 服務：
+
+```bash
+cd /home/labuser/woodfish-game
+cp .env.admin.example .env.admin
+sudo cp systemd/woodfish-admin.service.example /etc/systemd/system/woodfish-admin.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now woodfish-admin
+sudo systemctl status woodfish-admin
+curl -sS http://127.0.0.1:8010/health
+```
+
+管理頁面在未設定 Cloudflare Route 前可由內網使用：`http://192.168.26.131:8010/`。8010 不使用 Zabbix HTTP、ntopng 的 3001，也不改動現有 Tunnel。若要公開，建議另設 `admin-woodfish-a.netplaylab.codes` 指向 VM 1 的 `http://127.0.0.1:8010`，但必須由管理者自行修改 Cloudflare Tunnel route。
+
+### 管理服務更新與驗證
+
+```bash
+cd /home/labuser/woodfish-game
+git pull --ff-only origin main
+.venv/bin/pip install -r requirements.txt
+sudo systemctl restart woodfish-admin
+curl -sS http://127.0.0.1:8010/api/admin/status
+sudo journalctl -u woodfish-admin -n 50 --no-pager
+```
+
+若 A 或 B 離線，頁面會保留另一隊實際資料並明確顯示離線；不會使用模擬值。
+
 ## 測試與負載測試
 
 ```bash
