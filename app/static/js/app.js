@@ -1,7 +1,8 @@
 const playerKey = "woodfish-player-id";
 const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
-let woodfishAudio;
+const woodfishSounds = [];
+let woodfishSoundIndex = 0;
 let meritSequence = 0;
 const tapAttempts = new Map();
 const tapMetrics = [];
@@ -102,11 +103,15 @@ async function sendTap(item) {
 }
 
 function prepareAudio() {
-  if (woodfishAudio) return true;
+  if (woodfishSounds.length) return true;
   try {
-    woodfishAudio = new Audio("/static/assets/woodfish-hit.wav");
-    woodfishAudio.preload = "auto";
-    woodfishAudio.volume = .65;
+    for (let index = 0; index < 4; index += 1) {
+      const sound = new Audio("/static/assets/woodfish-hit.wav");
+      sound.preload = "auto";
+      sound.volume = .65;
+      sound.load();
+      woodfishSounds.push(sound);
+    }
     return true;
   } catch {
     if (!audioWarningShown) {
@@ -120,8 +125,8 @@ function prepareAudio() {
 function playWoodfishSound() {
   if (!prepareAudio()) return null;
   try {
-    const sound = woodfishAudio.cloneNode();
-    sound.volume = woodfishAudio.volume;
+    const sound = woodfishSounds[woodfishSoundIndex];
+    woodfishSoundIndex = (woodfishSoundIndex + 1) % woodfishSounds.length;
     sound.currentTime = 0;
     const playResult = sound.play();
     if (playResult) {
