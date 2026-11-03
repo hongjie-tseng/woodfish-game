@@ -14,6 +14,18 @@ function setConnection(text, status) {
   $("connection").className = `connection connection--${status}`;
 }
 
+function setServerState(roundStatus) {
+  if (roundStatus === "active") {
+    setConnection("已連線", "ok");
+  } else if (roundStatus === "paused") {
+    setConnection("未開始", "pending");
+  } else if (roundStatus === "ended") {
+    setConnection("已結束", "pending");
+  } else {
+    setConnection("狀態未知", "pending");
+  }
+}
+
 function render(stats) {
   $("personal-taps").textContent = stats.personal_taps;
   $("team-taps").textContent = stats.team_taps;
@@ -40,7 +52,7 @@ async function refresh() {
     $("team-name").textContent = config.team_name;
     document.documentElement.style.setProperty("--team-color", config.theme_color);
     render(stats);
-    setConnection("已連線", "ok");
+    setServerState(config.round_status);
   } catch {
     setConnection("連線異常", "error");
   }
@@ -77,7 +89,7 @@ async function sendTap(item) {
     });
     window.__woodfishTapMetrics = tapMetrics.slice(-20);
     render(result);
-    setConnection("已連線", "ok");
+    setServerState(result.round_status);
   } catch {
     setConnection("暫時離線", "error");
     if (item.attempt < maxTapAttempts) {
