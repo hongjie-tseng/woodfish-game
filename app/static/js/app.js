@@ -199,11 +199,6 @@ $("tap-area").addEventListener("pointerdown", (event) => {
   showMerit();
   sendTap(item);
 });
-$("sound-toggle").addEventListener("click", () => {
-  muted = !muted;
-  $("sound-toggle").querySelector("span").textContent = muted ? "音效關" : "音效開";
-  $("sound-toggle").setAttribute("aria-pressed", String(muted));
-});
 refresh();
 loadVersion();
 setInterval(refresh, 2000);
