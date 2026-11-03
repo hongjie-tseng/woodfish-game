@@ -1,21 +1,25 @@
 import logging
+import subprocess
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .database import connect, initialize_database, transaction
-from .models import ConfigResponse, StatsResponse, TapRequest, TapResponse
+from .models import ConfigResponse, StatsResponse, TapRequest, TapResponse, VersionResponse
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("woodfish")
 settings = get_settings()
+PROJECT_ROOT = Path(__file__).parent.parent
+VERSION_FILE = PROJECT_ROOT / "VERSION"
+INDEX_FILE = Path(__file__).parent / "templates" / "index.html"
 
 
 @asynccontextmanager
@@ -27,6 +31,37 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="電子敲木魚", version="1.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+
+def project_version() -> str:
+    try:
+        version = VERSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        logger.warning("Version file is unavailable: %s", VERSION_FILE)
+        return "unknown"
+    return version or "unknown"
+
+
+def git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=PROJECT_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        logger.warning("Git commit is unavailable: %s", error)
+        return "unknown"
+    commit = result.stdout.strip()
+    return commit or "unknown"
+
+
+def deployment_token() -> str:
+    commit = git_commit()
+    return commit if commit != "unknown" else project_version()
 
 
 def current_state(connection, player_id: str) -> dict:
@@ -44,8 +79,16 @@ def current_state(connection, player_id: str) -> dict:
 
 
 @app.get("/", include_in_schema=False)
-async def index() -> FileResponse:
-    return FileResponse(Path(__file__).parent / "templates" / "index.html")
+async def index() -> HTMLResponse:
+    html = INDEX_FILE.read_text(encoding="utf-8")
+    html = html.replace("__ASSET_VERSION__", deployment_token())
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.get("/api/version", response_model=VersionResponse)
+async def get_version(response: Response) -> VersionResponse:
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return VersionResponse(version=project_version(), commit=git_commit())
 
 
 @app.get("/health")

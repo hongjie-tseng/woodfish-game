@@ -32,3 +32,8 @@ class ConfigResponse(BaseModel):
     theme_color: str
     round_name: str
     round_status: str
+
+
+class VersionResponse(BaseModel):
+    version: str
+    commit: str

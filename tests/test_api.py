@@ -35,6 +35,17 @@ def test_stats_and_health(tmp_path, monkeypatch):
     assert stats.json()["team_taps"] == 1
 
 
+def test_version_endpoint_and_index_cache_headers(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    version = client.get("/api/version")
+    index = client.get("/")
+    assert version.status_code == 200
+    assert version.json()["version"] != ""
+    assert "commit" in version.json()
+    assert index.headers["cache-control"] == "no-store, max-age=0"
+    assert "__ASSET_VERSION__" not in index.text
+
+
 def test_paused_round_rejects_taps(tmp_path, monkeypatch):
     client, main = make_client(tmp_path, monkeypatch)
     with main.connect(main.settings.database_path) as connection:

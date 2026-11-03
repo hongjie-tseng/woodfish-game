@@ -46,6 +46,16 @@ async function refresh() {
   } catch {
     setConnection("連線異常", "error");
   }
+
+}
+
+async function loadVersion() {
+  try {
+    const version = await load("/api/version", { cache: "no-store" });
+    $("version-info").textContent = `v${version.version} · ${version.commit}`;
+  } catch {
+    $("version-info").textContent = "vunknown · unknown";
+  }
 }
 
 async function sendTap(item) {
@@ -195,5 +205,6 @@ $("sound-toggle").addEventListener("click", () => {
   $("sound-toggle").setAttribute("aria-pressed", String(muted));
 });
 refresh();
+loadVersion();
 setInterval(refresh, 2000);
 prepareAudio();

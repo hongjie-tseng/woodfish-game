@@ -14,6 +14,8 @@ python -m uvicorn app.main:app --reload
 
 瀏覽 `http://127.0.0.1:8000/`。API 可用 `GET /health`、`GET /api/config`、`GET /api/stats?player_id=...` 與 `POST /api/tap`。
 
+頁面右下角會顯示 `VERSION` 與執行中 Git Commit 短 SHA。`GET /api/version` 也會回傳相同資訊；Git 資訊無法取得時會顯示 `unknown`，不會使用假 SHA。
+
 ## 回合管理
 
 管理指令只在伺服器本機執行，不提供公開重設 API：
@@ -74,6 +76,19 @@ git pull --ff-only origin main
 sudo systemctl restart woodfish
 sudo journalctl -u woodfish -f
 ```
+
+部署後驗證版本與快取：
+
+```bash
+cd /home/labuser/woodfish-game
+git rev-parse --short HEAD
+curl -sS http://127.0.0.1:8000/api/version
+curl -sSI http://127.0.0.1:8000/
+curl -sS https://woodfish-a.netplaylab.codes/api/version
+curl -sS https://woodfish-b.netplaylab.codes/api/version
+```
+
+`git rev-parse --short HEAD` 必須與本機 `/api/version` 的 `commit` 相同；兩台伺服器的 API 回應可用來確認部署是否一致。HTML 使用 no-store，CSS、JavaScript 與圖片 URL 使用部署版本作為 cache-busting token。
 
 服務固定監聽 `8000`，不使用 `8100`；Cloudflare 路由、Zabbix、ntopng 不需修改。SQLite 備份可在停止服務後複製 `.env` 指定的資料庫檔案，重設資料庫前請先備份。
 
