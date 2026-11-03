@@ -33,7 +33,13 @@ python scripts/manage_round.py end
 python -m pytest
 ```
 
-正式網址禁止直接壓測。課堂前可在本機以少量請求驗證 API；每次有效敲擊都是一個獨立 POST，伺服器用 `tap_id` 去重。
+正式網址禁止直接壓測。只對本機或已獲授權的環境執行：
+
+```bash
+python scripts/load_test.py --url http://127.0.0.1:8000 --requests 100 --concurrency 10
+```
+
+工具會輸出成功率與延遲；每次有效敲擊都是一個獨立 POST，伺服器用 `tap_id` 去重。
 
 ## Ubuntu 部署
 
