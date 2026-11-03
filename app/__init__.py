@@ -1,0 +1,1 @@
+"""Electronic woodfish game application."""

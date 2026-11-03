@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#b45309">
+  <title>電子敲木魚</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header>
+      <p class="eyebrow">功德修行 · <span id="team-name">連線中</span></p>
+      <h1>電子敲木魚</h1>
+      <span id="connection" class="status status--pending">連線中</span>
+    </header>
+    <section class="scoreboard" aria-label="敲擊統計">
+      <div><strong id="personal-taps">0</strong><span>我的敲擊</span></div>
+      <div><strong id="team-taps">0</strong><span>全隊累積</span></div>
+      <div><strong id="round-taps">0</strong><span>本回合</span></div>
+    </section>
+    <button id="woodfish" class="woodfish" type="button" aria-label="敲擊木魚">
+      <span class="woodfish__body">木魚</span>
+      <span class="woodfish__mark">◌</span>
+    </button>
+    <p id="round-label" class="round-label">準備中</p>
+    <p id="message" class="message">點擊木魚開始累積功德</p>
+  </main>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

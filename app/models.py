@@ -1,0 +1,34 @@
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class TapRequest(BaseModel):
+    tap_id: str = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    player_id: str = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class TapResponse(BaseModel):
+    accepted: bool
+    duplicate: bool
+    personal_taps: int
+    team_taps: int
+    round_taps: int
+    round_status: str
+
+
+class StatsResponse(BaseModel):
+    personal_taps: int
+    team_taps: int
+    round_taps: int
+    round_name: str
+    round_status: str
+    server_time: datetime
+
+
+class ConfigResponse(BaseModel):
+    team_id: str
+    team_name: str
+    theme_color: str
+    round_name: str
+    round_status: str

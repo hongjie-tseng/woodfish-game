@@ -1,0 +1,838 @@
+# 專案任務：開發並部署「敲木魚」網路流量監控實驗遊戲
+
+你是一位資深 Python 全端工程師、Linux DevOps 工程師，以及網路系統工程師。
+
+請協助我使用 VS Code 開發一套可以在手機瀏覽器遊玩的「敲木魚」遊戲，並部署到兩台現有 Ubuntu Server VM。
+
+這是國立中央大學資訊管理研究所的網路管理課程作業，目的不只是完成遊戲，而是透過真實玩家產生網路流量，利用 Zabbix 與 ntopng 展示網路監控功能。
+
+**請特別注意：基礎設施已經架設完成，禁止在沒有必要的情況下重新設計、重新安裝或破壞現有設定。**
+
+整個專案必須使用 Git 進行版本控制，GitHub 作為遠端程式碼儲存庫，VS Code 作為主要開發工具。
+
+---
+
+# 一、專案背景與目的
+
+## 1.1 課程作業
+
+需要建置並實際展示開源網路管理工具，例如：
+
+- Zabbix
+- ntopng
+
+需要能夠觀察與比較伺服器的網路流量、封包、協定、CPU、記憶體及其他可監控指標。
+
+預計約 60 名同學使用自己的手機，透過 4G／5G 或 Wi-Fi 進入網頁遊戲。
+
+同學會分成 A、B 兩隊，連接不同的遊戲伺服器。
+
+整個專案有兩種遊戲：
+
+1. 敲木魚（由我負責開發）
+2. 流量拔河（由另一位同學獨立開發）
+
+本次開發範圍**只有敲木魚**，但必須與流量拔河共存，不能占用或修改流量拔河預留的服務 Port。
+
+## 1.2 核心實驗概念
+
+讓 A、B 兩組玩家產生真實的 HTTP 流量，再比較兩台伺服器的：
+
+- Network throughput（網路吞吐量）
+- Received / Sent traffic（接收及傳送流量）
+- Packet rate（封包速率，若監控項目可取得）
+- CPU utilization
+- Memory utilization
+- Network connections（若監控工具可取得）
+- Protocol distribution（依 ntopng 實際可見的流量判讀）
+
+必須區分「遊戲應用程式統計」與「網路監控工具觀測值」，不得將 HTTP 請求數直接宣稱為封包數。
+
+---
+
+# 二、現有硬體及軟體環境
+
+## 2.1 虛擬化環境
+
+使用 VMware Workstation，三台 Ubuntu Server VM 位於同一個 NAT 虛擬網路。
+
+網段：
+
+192.168.26.0/24
+
+三台 VM 已經能互相透過 SSH 連線。
+
+## 2.2 VM 1：Ubuntu-Monitor
+
+主機名稱：monitor
+
+使用者：labuser
+
+IP：192.168.26.131
+
+作業系統：Ubuntu Server 26.04.1 LTS
+
+已安裝：
+
+- Zabbix 7.0 LTS Server
+- Zabbix Agent
+- MySQL
+- Apache
+- ntopng 7.0 Community
+- cloudflared 2026.10.7
+- Cloudflare Named Tunnel
+
+Zabbix：
+
+http://192.168.26.131/zabbix
+
+ntopng：
+
+https://192.168.26.131:3001/
+
+ntopng 目前監控 ens33 網路介面。
+
+Cloudflare Named Tunnel 名稱：
+
+netplaylab
+
+已透過 systemd 設定自動啟動，並已成功連線。
+
+注意：不要在這台主機重新安裝 Zabbix、ntopng 或 cloudflared。
+
+## 2.3 VM 2：Game-Server-A
+
+主機名稱：game-a
+
+使用者：labuser
+
+IP：192.168.26.133
+
+作業系統：Ubuntu Server 26.04.1 LTS
+
+資源：
+
+- 2 vCPU
+- 4 GB RAM
+- 20 GB 磁碟
+
+已安裝：
+
+- Python 3
+- pip
+- venv
+- Git
+- curl
+- OpenSSH
+- Zabbix Agent 7.0
+
+Zabbix Agent 已能由 VM 1 正常讀取。
+
+目前有測試用的 woodfish.service：
+
+/etc/systemd/system/woodfish.service
+
+目前測試網站使用：
+
+/home/labuser/tunnel-test
+
+Port：
+
+8000
+
+目前使用 Python http.server 啟動測試網站。
+
+**正式部署時，必須將此測試服務替換成 FastAPI 遊戲服務，不得同時讓兩個程式占用 Port 8000。**
+
+## 2.4 VM 3：Game-Server-B
+
+主機名稱：game-b
+
+使用者：labuser
+
+IP：192.168.26.135
+
+作業系統：Ubuntu Server 26.04.1 LTS
+
+資源：
+
+- 2 vCPU
+- 2 GB RAM
+- 20 GB 磁碟
+
+已安裝：
+
+- Python 3
+- pip
+- venv
+- Git
+- curl
+- OpenSSH
+- Zabbix Agent 7.0
+
+Zabbix Agent 已能由 VM 1 正常讀取。
+
+目前也有測試用的：
+
+/etc/systemd/system/woodfish.service
+
+目前測試網站使用：
+
+/home/labuser/tunnel-test
+
+Port：
+
+8000
+
+正式部署方式應與 VM 2 相同。
+
+---
+
+# 三、已建立的 Cloudflare 固定網址
+
+已經購買並啟用網域：
+
+netplaylab.codes
+
+已將 DNS 管理權交給 Cloudflare。
+
+已建立 Named Tunnel：
+
+netplaylab
+
+四條公開路由已完成設定：
+
+| 用途 | 公開網址 | 內部服務 |
+|---|---|---|
+| 敲木魚 A | https://woodfish-a.netplaylab.codes | http://192.168.26.133:8000 |
+| 敲木魚 B | https://woodfish-b.netplaylab.codes | http://192.168.26.135:8000 |
+| 流量拔河 A | https://tug-a.netplaylab.codes | http://192.168.26.133:8100 |
+| 流量拔河 B | https://tug-b.netplaylab.codes | http://192.168.26.135:8100 |
+
+其中敲木魚 A、B 的測試網站已經成功透過手機行動網路開啟。
+
+Cloudflare 對外提供 HTTPS，Tunnel 到 Ubuntu 遊戲服務使用 HTTP。
+
+**不要修改 Cloudflare 的 DNS、SSL、Tunnel 路由或公開網址，除非有明確且必要的理由，並先取得我的同意。**
+
+前端呼叫 API 必須使用相對路徑，例如：
+
+/api/tap
+
+不要寫死 VM IP、localhost 或某個公開網址。
+
+---
+
+# 四、遊戲功能需求
+
+## 4.1 遊戲定位
+
+這是一個手機網頁敲木魚遊戲。
+
+操作必須簡單，進入網址後不用註冊、不用登入、不用設定，就能直接開始敲擊。
+
+畫面使用繁體中文。
+
+視覺風格：
+
+- 現代、簡潔、精緻
+- 木魚主題
+- 適合手機單手操作
+- 按鈕與主要木魚圖案要夠大
+- 避免過多文字與操作
+- 可以有輕量動畫與音效
+- 版面應有遊戲感，而不是一般管理後台
+
+## 4.2 首頁畫面
+
+至少包含：
+
+1. 遊戲標題「電子敲木魚」
+2. 中央大型可點擊木魚
+3. 個人累積敲擊次數
+4. 全隊累積敲擊次數
+5. A 隊或 B 隊標示
+6. 伺服器連線狀態
+7. 簡短操作提示
+
+A、B 隊畫面使用相同程式碼，但可以透過設定檔區分顯示的隊伍名稱及主題色。
+
+不需要讓玩家自己選隊，因為掃描不同 QR Code 就會進入不同伺服器。
+
+## 4.3 敲擊互動
+
+每次玩家點擊木魚：
+
+1. 立即觸發短暫的敲擊動畫。
+2. 可播放短音效，但必須支援靜音。
+3. 向後端發出一次真實 HTTP POST 請求。
+4. 後端確認請求成功後更新已確認的計數。
+5. 顯示玩家的個人敲擊數及全隊總數。
+
+**核心要求：每一次有效敲擊都應產生一次獨立 HTTP 請求。**
+
+不得為了節省流量而將多次敲擊合併為單一請求。
+
+不得只在前端增加數字而不向伺服器發送請求。
+
+但也不能故意產生無意義的超大封包或大量背景請求來製造流量。
+
+為了避免手機快速連點時漏算，請設計合理的非同步請求及排隊機制，不要讓畫面卡頓。
+
+需考量請求失敗、重試和重複計數問題，建議使用唯一敲擊 ID，讓後端支援冪等處理。
+
+## 4.4 計數系統
+
+需要：
+
+- 個人敲擊次數
+- 該伺服器的全隊總敲擊次數
+- 本回合的敲擊次數
+- 目前回合狀態
+
+A、B 兩台伺服器的統計必須相互獨立。
+
+不需要建立中央計數伺服器，也不需要讓 A、B 互相同步分數。
+
+個人識別可使用瀏覽器產生的匿名 UUID，保存在 localStorage。
+
+不需要姓名、學號、Email 或其他個人資料。
+
+## 4.5 比賽回合
+
+考慮課堂展示的操作流程，需要提供基本回合控制。
+
+至少支援：
+
+- 開始新回合
+- 暫停或結束回合
+- 重設本回合計數
+- 保留或清除累積計數
+
+請設計僅限管理者操作的控制方式，優先提供伺服器本機 CLI 管理指令，避免公開無驗證的重設 API。
+
+不要為此導入大型後台、OAuth 或複雜帳號系統。
+
+開始與結束回合的方式需要容易在課堂現場操作。
+
+## 4.6 音效與動畫
+
+可以用 CSS 動畫與簡單的原創音效完成。
+
+不要依賴外部 CDN 或不確定授權的圖片、音效。
+
+若需要圖片素材，優先使用自行製作的 SVG 或可合法使用的本地資源。
+
+音效必須符合手機瀏覽器的播放限制。
+
+音效播放失敗不能影響敲擊或 HTTP 請求。
+
+## 4.7 網路斷線處理
+
+如果手機暫時無法連線：
+
+- 不應造成前端崩潰。
+- 顯示清楚的連線狀態。
+- 區分已確認及尚未確認的敲擊。
+- 不要假裝伺服器已收到請求。
+- 不要在重新連線後無限制地重送大量請求。
+
+需有合理的 Timeout、錯誤處理及重試策略。
+
+---
+
+# 五、後端技術需求
+
+## 5.1 技術選型
+
+使用：
+
+- Python 3
+- FastAPI
+- Uvicorn
+- SQLite
+- HTML
+- CSS
+- Vanilla JavaScript
+
+不使用：
+
+- Docker
+- Kubernetes
+- Redis
+- React
+- Vue
+- Node.js 建置工具鏈
+- 額外的雲端資料庫
+
+除非有明確必要性，且先解釋原因取得我的同意。
+
+這是一個課堂實驗專案，需要兼顧簡單、容易理解和能支援約 60 名玩家。
+
+## 5.2 API
+
+至少規劃：
+
+GET /
+
+取得遊戲首頁。
+
+GET /health
+
+回傳伺服器健康狀態，例如：
+
+- status
+- team
+- server_time
+
+POST /api/tap
+
+接收單次敲擊事件。
+
+GET /api/stats
+
+取得目前的遊戲統計。
+
+GET /api/config
+
+取得前端需要的公開設定，例如隊伍名稱、回合狀態。
+
+請自行定義合理的 JSON Schema，使用 Pydantic 驗證輸入。
+
+API 必須有適當的 HTTP 狀態碼與例外處理。
+
+同一瀏覽器的重試請求不得導致同一敲擊重複計數。
+
+## 5.3 資料儲存
+
+使用 SQLite。
+
+建議考慮：
+
+- WAL 模式
+- 交易一致性
+- 多個請求同時寫入
+- 避免不必要的資料庫鎖定
+- 避免每次統計查詢掃描大量歷史資料
+
+不需要保留每一次敲擊的完整個人行為歷史。
+
+只需儲存必要的統計資料及短期去重資訊，避免資料庫無限制增長。
+
+請在 README 說明資料庫如何初始化、備份及重設。
+
+## 5.4 效能需求
+
+預估玩家約 60 人，分成 A、B 兩隊。
+
+假設每人平均每秒敲擊 4 次。
+
+總計約：
+
+240 次敲擊／秒。
+
+平均分配到兩台伺服器：
+
+每台約 120 次敲擊／秒。
+
+以上是設計與壓力測試目標，不代表已經驗證實際效能。
+
+請考量統計輪詢額外產生的流量，以及手機網路延遲。
+
+前端統計更新可以每 1～2 秒輪詢，不需要每次敲擊都重新抓取全隊統計。
+
+不需要引入 WebSocket，除非可以清楚證明有必要。
+
+應提供可以在本機執行的基本負載測試工具，驗證請求成功率、延遲及計數正確性。
+
+不要對正式公開網址直接執行高負載測試，除非取得我的明確同意。
+
+---
+
+# 六、Git 與 GitHub 版本控制
+
+## 6.1 版本控制要求
+
+整個專案必須使用 Git。
+
+GitHub 作為遠端 Repository。
+
+建議 Repository 名稱：
+
+woodfish-game
+
+請提供：
+
+- Git Repository 初始化方式
+- GitHub Repository 建立方式
+- Git 遠端連線設定
+- .gitignore
+- README.md
+- requirements.txt
+- .env.example
+- 合理的 Commit 規範
+- 基本分支開發流程
+
+不要把密碼、Token、虛擬環境、SQLite 資料庫或其他敏感設定提交到 GitHub。
+
+## 6.2 Git 工作流程
+
+建議：
+
+main：穩定可部署版本。
+
+feature/*：新功能開發。
+
+修正完成並測試後才合併到 main。
+
+Commit 訊息使用清楚的英文，例如：
+
+- feat: initialize FastAPI project
+- feat: implement tap API
+- feat: add mobile game interface
+- feat: add round management
+- fix: prevent duplicate tap counts
+- docs: add Ubuntu deployment guide
+
+每完成一個獨立功能，請建議一個適當的 Commit。
+
+不要在沒有確認的情況下強制推送、覆蓋遠端分支或刪除歷史。
+
+## 6.3 部署流程
+
+正式開發使用 VS Code。
+
+程式碼放在 GitHub。
+
+部署時，兩台 Ubuntu VM 都從同一個 GitHub Repository 取得程式碼。
+
+建議部署路徑：
+
+/home/labuser/woodfish-game
+
+兩台伺服器各自建立 Python venv。
+
+環境差異使用獨立的 .env 控制。
+
+Game-Server-A：
+
+TEAM_ID=A
+
+PORT=8000
+
+Game-Server-B：
+
+TEAM_ID=B
+
+PORT=8000
+
+資料庫必須各自獨立，不共用 SQLite 檔案。
+
+後續更新使用 Git pull、安裝必要相依套件、重新啟動 systemd 服務。
+
+請提供清楚、可重複執行的更新流程。
+
+---
+
+# 七、systemd 部署需求
+
+兩台遊戲伺服器目前已存在：
+
+/etc/systemd/system/woodfish.service
+
+但是目前執行的是 Python http.server 測試網站。
+
+正式部署時要把它改成 FastAPI + Uvicorn。
+
+請提供適合 Ubuntu 的 systemd Service 設定，並考慮：
+
+- 正確的 WorkingDirectory
+- venv 的 Python / Uvicorn 路徑
+- 使用 labuser 執行
+- Restart=always
+- 開機自動啟動
+- systemd 日誌管理
+- 環境設定讀取
+- 正確的 Port 8000
+- 停止舊測試服務後才啟動正式服務
+
+部署後應能使用：
+
+sudo systemctl status woodfish
+
+sudo systemctl restart woodfish
+
+sudo journalctl -u woodfish -f
+
+檢查服務。
+
+**不可修改 Zabbix Agent、cloudflared 或其他不相關的 systemd 服務。**
+
+---
+
+# 八、網路監控相關要求
+
+本專案的重要目的，是讓 Zabbix 和 ntopng 能觀察真實遊戲流量。
+
+## 8.1 Zabbix
+
+Zabbix Agent 已安裝完成。
+
+Host：
+
+game-a
+
+game-b
+
+已經可以取得 CPU、記憶體及網路監控項目。
+
+請不要重新安裝 Zabbix。
+
+如果後續需要監控更多指標，先分析現有項目是否足夠。
+
+可在 README 說明建議觀察：
+
+- ens33 inbound traffic
+- ens33 outbound traffic
+- CPU utilization
+- Memory utilization
+- Packet rate（若現有或新增項目支援）
+
+因為遊戲回合可能只有幾十秒，需提醒監控輪詢間隔可能影響圖表細節。
+
+## 8.2 ntopng
+
+ntopng 安裝在 VM 1。
+
+目前監控 VM 1 的 ens33。
+
+真實手機連線路徑：
+
+手機 → Cloudflare → VM 1 的 cloudflared → VM 2／VM 3
+
+需注意：
+
+- 不能假設 ntopng 一定能看見玩家原始 IP。
+- 不能假設 VM 1 可以看到手機到 Cloudflare 的所有原始封包。
+- Cloudflare Tunnel 會影響 ntopng 可見的通訊端點與協定。
+- 不可把遊戲 HTTP request 數直接當成實際網路封包數。
+- 不可假設 VM 1 的 ens33 能單獨觀察所有 A、B 伺服器互相無關的網路流量。
+
+如果監控功能受到 NAT、Tunnel 或 VMware 虛擬交換網路限制，請明確指出，而不是產生虛假的統計。
+
+## 8.3 可觀測性
+
+程式應提供適當的應用程式日誌，至少能觀察：
+
+- 每秒敲擊請求數
+- 成功與失敗請求
+- 回合狀態
+- 伺服器啟動與錯誤
+
+避免每次敲擊都輸出過多冗長日誌，造成不必要的磁碟負載。
+
+若需要額外提供監控 API，應避免不必要的資料暴露及額外架構複雜度。
+
+---
+
+# 九、前端及手機相容性
+
+必須支援：
+
+- iPhone Safari
+- iPhone Chrome
+- Android Chrome
+- Windows 桌面瀏覽器
+
+畫面應採 Mobile-first 響應式設計。
+
+要求：
+
+- 敲擊區域夠大
+- 快速連點不觸發文字選取
+- 避免雙擊縮放干擾遊戲
+- 適當處理觸控及滑鼠操作
+- 不因為動畫阻塞 HTTP 請求
+- 不使用需要額外安裝的 App
+- 不要求使用者註冊登入
+- 正常使用 HTTPS 網址
+
+對外公開網址已由 Cloudflare 提供 HTTPS，不需要在 FastAPI 另行安裝 SSL 憑證。
+
+---
+
+# 十、專案目錄建議
+
+請依照簡單、可維護的原則建立類似結構：
+
+woodfish-game/
+    
+    app/
+        __init__.py
+        main.py
+        config.py
+        database.py
+        models.py
+        routes/
+        services/
+        static/
+            css/
+            js/
+            assets/
+        templates/
+    
+    scripts/
+        manage_round.py
+        deploy.sh
+    
+    tests/
+    
+    .env.example
+    .gitignore
+    requirements.txt
+    README.md
+
+可以依實際需要調整，但不要為了追求大型企業架構而切分過多檔案。
+
+---
+
+# 十一、開發與測試順序
+
+請依照以下順序進行：
+
+## 階段 1：初始化
+
+- 建立專案目錄
+- 初始化 Git
+- 建立 Python venv
+- 建立 requirements.txt
+- 建立 FastAPI 基本架構
+- 建立 README.md
+- 建立 .gitignore
+- 確認本機可以啟動
+
+## 階段 2：後端核心功能
+
+- 建立資料庫
+- 開發敲擊 API
+- 開發統計 API
+- 完成匿名玩家識別
+- 完成 A、B 隊環境設定
+- 完成基本自動化測試
+
+## 階段 3：手機遊戲前端
+
+- 設計手機首頁
+- 木魚互動
+- 敲擊動畫
+- 音效
+- 計數顯示
+- 連線狀態
+- 響應式版面
+
+## 階段 4：回合控制
+
+- 開始回合
+- 結束回合
+- 重設計數
+- 本機 CLI 管理
+
+## 階段 5：GitHub
+
+- 整理程式碼
+- Commit
+- 建立 GitHub Repository
+- 推送 main 分支
+- 確認敏感檔案沒有被追蹤
+
+## 階段 6：Ubuntu 部署
+
+- VM 2 Git clone
+- VM 2 venv
+- VM 2 設定 TEAM_ID=A
+- VM 2 修改 woodfish.service
+- VM 2 確認 HTTP 與 HTTPS 公開入口
+- VM 3 Git clone
+- VM 3 venv
+- VM 3 設定 TEAM_ID=B
+- VM 3 修改 woodfish.service
+- VM 3 確認 HTTP 與 HTTPS 公開入口
+
+## 階段 7：監控及效能驗證
+
+- 少量人工敲擊
+- 確認每次敲擊會產生 HTTP 請求
+- 確認統計正確
+- 確認 Zabbix 可以觀察伺服器流量變化
+- 確認 ntopng 實際可見哪些通訊
+- 進行合理的本機負載測試
+- 記錄測試結果及已知限制
+
+---
+
+# 十二、重要開發限制
+
+請嚴格遵守：
+
+1. 不使用 Docker。
+2. 不重新安裝 Ubuntu。
+3. 不重新安裝 Zabbix 或 ntopng。
+4. 不更改 Cloudflare 固定網址。
+5. 不占用 Port 8100。
+6. 不建立額外雲端伺服器。
+7. 不導入不必要的資料庫或前端框架。
+8. 所有程式碼必須能透過 GitHub 版本控制。
+9. 同一套程式碼必須支援 A、B 兩台伺服器。
+10. 必須提供明確的部署與更新方式。
+11. 不可假裝已成功執行實際上未執行的測試。
+12. 如果沒有 SSH、GitHub 或終端機權限，請提供可讓我手動執行的指令，不要宣稱已完成部署。
+13. 不要任意刪除目前運作中的服務或設定。
+14. 如果修改現有 systemd 設定，應先提供備份方式。
+15. 優先完成可運作的 MVP，再增加視覺效果或非必要功能。
+
+---
+
+# 十三、與我互動的方式
+
+我具有基本程式設計與 Linux 知識，但對 FastAPI、Git 部署及 systemd 的實務操作還不熟悉。
+
+因此請：
+
+- 使用繁體中文解釋。
+- 程式碼、變數、檔案名稱使用英文。
+- 先說明要做什麼，再提供實際指令或修改。
+- 每次只帶我完成一個明確的階段。
+- 每個階段完成後說明如何驗證。
+- 遇到錯誤時先診斷，不要立即推翻整套架構。
+- 能自動建立的專案檔案請直接建立。
+- 不要只提供大量程式碼，卻不告訴我應該放在哪裡。
+- 在進行破壞性操作或修改既有伺服器設定之前先徵求同意。
+- 不要擅自購買服務或使用付費 API。
+
+# 現在開始
+
+請先檢查目前 VS Code 工作區和可用的開發環境。
+
+如果工作區是空的，就直接建立專案的最小可運作版本，包括：
+
+1. FastAPI 專案基本架構
+2. Git 與 .gitignore
+3. requirements.txt
+4. README.md
+5. .env.example
+6. 最基本的手機敲木魚網頁
+7. POST /api/tap
+8. GET /api/stats
+9. 基本測試
+
+先確保本機能啟動並進行敲擊，再逐步完成其他功能。
+
+第一個階段完成後，告訴我：
+
+- 建立了哪些檔案
+- 如何在 VS Code 啟動
+- 如何測試 API
+- 如何進行第一次 Git Commit
+- 接下來應該做什麼
+
+不要一開始就修改 Ubuntu 上已經運作正常的 Cloudflare、Zabbix 或 systemd 服務。
