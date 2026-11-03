@@ -53,7 +53,7 @@ function Assert-RemotePreconditions {
     if (-not [string]::IsNullOrWhiteSpace($status)) {
         throw "$Name remote Git worktree is dirty: $status"
     }
-    $remoteMain = Invoke-SSH $server.Host "cd $ProjectPath; git fetch origin main; git rev-parse origin/main"
+    $remoteMain = Invoke-SSH $server.Host "cd $ProjectPath; git fetch --quiet origin main; git rev-parse origin/main"
     if ($remoteMain.Trim() -ne $script:ExpectedCommit) {
         throw "$Name cannot see expected origin/main commit: $remoteMain"
     }
