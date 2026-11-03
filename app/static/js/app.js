@@ -135,6 +135,7 @@ function showMerit() {
   merit.className = "merit";
   merit.textContent = "功德 +1";
   merit.style.fontSize = `${1.98 + Math.random() * (5.94 - 1.98)}rem`;
+  merit.style.setProperty("--merit-rise", `${45 + Math.random() * 55}px`);
   merit.style.left = `${26 + (meritSequence++ % 3) * 9}%`;
   $("merit-layer").appendChild(merit);
   setTimeout(() => merit.remove(), 700);
