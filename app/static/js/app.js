@@ -5,6 +5,8 @@ const pending = [];
 let sending = false;
 let muted = false;
 let audioContext;
+let noiseBuffer;
+let meritSequence = 0;
 const $ = (id) => document.getElementById(id);
 
 function setConnection(text, status) {
@@ -15,7 +17,6 @@ function setConnection(text, status) {
 function render(stats) {
   $("personal-taps").textContent = stats.personal_taps;
   $("team-taps").textContent = stats.team_taps;
-  $("round-taps").textContent = stats.round_taps;
 }
 
 async function load(url, options = {}) {
@@ -68,18 +69,49 @@ function playWoodfishSound() {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
     audioContext.resume();
-    const now = audioContext.currentTime;
-    [145, 215].forEach((frequency, index) => {
+    if (!noiseBuffer) {
+      noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * .22, audioContext.sampleRate);
+      const samples = noiseBuffer.getChannelData(0);
+      for (let index = 0; index < samples.length; index += 1) {
+        samples[index] = (Math.random() * 2 - 1) * Math.exp(-index / (audioContext.sampleRate * .018));
+      }
+    }
+    const now = audioContext.currentTime + .005;
+    const output = audioContext.createGain();
+    const compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-18, now);
+    compressor.knee.setValueAtTime(12, now);
+    compressor.ratio.setValueAtTime(5, now);
+    compressor.attack.setValueAtTime(.001, now);
+    compressor.release.setValueAtTime(.08, now);
+    output.gain.setValueAtTime(.8, now);
+    output.connect(compressor).connect(audioContext.destination);
+
+    const transient = audioContext.createBufferSource();
+    const transientFilter = audioContext.createBiquadFilter();
+    const transientGain = audioContext.createGain();
+    transient.buffer = noiseBuffer;
+    transientFilter.type = "bandpass";
+    transientFilter.frequency.setValueAtTime(1800, now);
+    transientFilter.Q.setValueAtTime(.9, now);
+    transientGain.gain.setValueAtTime(.001, now);
+    transientGain.gain.linearRampToValueAtTime(.22, now + .002);
+    transientGain.gain.exponentialRampToValueAtTime(.001, now + .095);
+    transient.connect(transientFilter).connect(transientGain).connect(output);
+    transient.start(now);
+    transient.stop(now + .11);
+
+    [520, 840, 1320].forEach((frequency, index) => {
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      oscillator.type = index ? "triangle" : "sine";
-      oscillator.frequency.setValueAtTime(frequency, now);
-      oscillator.frequency.exponentialRampToValueAtTime(frequency * .48, now + .22);
-      gain.gain.setValueAtTime(index ? .12 : .2, now);
-      gain.gain.exponentialRampToValueAtTime(.001, now + .24);
-      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.type = index === 2 ? "sine" : "triangle";
+      oscillator.frequency.setValueAtTime(frequency * (1 + (Math.random() - .5) * .025), now);
+      gain.gain.setValueAtTime(.001, now);
+      gain.gain.linearRampToValueAtTime([.16, .1, .055][index], now + .003);
+      gain.gain.exponentialRampToValueAtTime(.001, now + [.19, .16, .13][index]);
+      oscillator.connect(gain).connect(output);
       oscillator.start(now);
-      oscillator.stop(now + .26);
+      oscillator.stop(now + .21);
     });
   } catch {
     // Audio is an enhancement; it must never block a tap request.
@@ -90,23 +122,23 @@ function showMerit() {
   const merit = document.createElement("span");
   merit.className = "merit";
   merit.textContent = "功德 +1";
-  merit.style.left = `${35 + Math.random() * 30}%`;
+  merit.style.left = `${26 + (meritSequence++ % 3) * 9}%`;
   $("merit-layer").appendChild(merit);
-  setTimeout(() => merit.remove(), 950);
+  setTimeout(() => merit.remove(), 700);
 }
 
 $("tap-area").addEventListener("pointerdown", () => {
   $("tap-area").classList.remove("is-hitting");
   void $("tap-area").offsetWidth;
   $("tap-area").classList.add("is-hitting");
-  playWoodfishSound();
+  setTimeout(playWoodfishSound, 155);
   showMerit();
   pending.push({ tap_id: crypto.randomUUID(), player_id: playerId });
   drain();
 });
 $("sound-toggle").addEventListener("click", () => {
   muted = !muted;
-  $("sound-toggle").textContent = muted ? "🔇 音效關" : "🔊 音效開";
+  $("sound-toggle").querySelector("span").textContent = muted ? "音效關" : "音效開";
   $("sound-toggle").setAttribute("aria-pressed", String(muted));
 });
 refresh();
