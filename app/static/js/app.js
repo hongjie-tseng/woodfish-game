@@ -3,6 +3,10 @@ const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
 const pending = [];
 let sending = false;
+let localTaps = 0;
+let muted = false;
+let audioContext;
+const monkQuotes = ["你笑甚麼？", "好玩嗎？", "敲慢一點，老衲頭很暈", "功德不是這樣刷的喔", "施主，手下留情！", "又來？"];
 const $ = (id) => document.getElementById(id);
 
 function setConnection(text, status) {
@@ -62,11 +66,61 @@ async function drain() {
   }
 }
 
+function playWoodfishSound() {
+  if (muted) return;
+  try {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    audioContext.resume();
+    const now = audioContext.currentTime;
+    [520, 760].forEach((frequency, index) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = index ? "triangle" : "sine";
+      oscillator.frequency.setValueAtTime(frequency, now);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency * .72, now + .16);
+      gain.gain.setValueAtTime(index ? .09 : .16, now);
+      gain.gain.exponentialRampToValueAtTime(.001, now + .18);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(now);
+      oscillator.stop(now + .2);
+    });
+  } catch {
+    // Audio is an enhancement; it must never block a tap request.
+  }
+}
+
+function showMerit() {
+  const merit = document.createElement("span");
+  merit.className = "merit";
+  merit.textContent = "功德 +1";
+  merit.style.left = `${35 + Math.random() * 30}%`;
+  $("merit-layer").appendChild(merit);
+  setTimeout(() => merit.remove(), 950);
+}
+
 $("woodfish").addEventListener("pointerdown", () => {
   $("woodfish").classList.add("is-tapped");
   setTimeout(() => $("woodfish").classList.remove("is-tapped"), 100);
+  $("monk").classList.remove("is-hit");
+  void $("monk").offsetWidth;
+  $("monk").classList.add("is-hit");
+  playWoodfishSound();
+  showMerit();
+  localTaps += 1;
+  if (localTaps >= 8 && (localTaps % 5 === 0 || Math.random() < .18)) {
+    $("message").textContent = monkQuotes[Math.floor(Math.random() * monkQuotes.length)];
+  } else {
+    $("message").textContent = "功德 +1，和尚表示頭很痛";
+  }
   pending.push({ tap_id: crypto.randomUUID(), player_id: playerId });
   drain();
+});
+$("sound-toggle").addEventListener("click", () => {
+  muted = !muted;
+  $("sound-toggle").textContent = muted ? "🔇 音效關" : "🔊 音效開";
+  $("sound-toggle").setAttribute("aria-pressed", String(muted));
 });
 refresh();
 setInterval(refresh, 2000);
