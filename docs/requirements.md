@@ -97,3 +97,15 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 - 管理服務不得占用或修改 Zabbix、ntopng（Port 3001）及 Cloudflare Tunnel；目前不自行新增 Cloudflare 公開 route。
 - VM 1 管理服務使用 `systemd/woodfish-admin.service.example`，獨立於既有 `woodfish.service`。
 - 近期敲擊速率由 VM 1 對真實伺服器回報的計數樣本計算，存於管理服務記憶體；服務重啟後先顯示待建立樣本，不使用模擬值。
+
+## 三台 VM SSH 自動部署需求
+
+- Windows VS Code 為部署控制端；GitHub `main` 是唯一部署來源。
+- `scripts/check-servers.ps1` 必須以 SSH 唯讀查詢 `woodfish-a`、`woodfish-b`、`woodfish-monitor` 的 Git Commit、工作目錄、systemd 狀態與 Health。
+- `scripts/deploy.ps1` 預設只檢查；只有明確傳入 `-Deploy` 才能更新遠端。
+- 部署順序固定為 Game-Server-A、Game-Server-B、Ubuntu-Monitor。
+- 部署前必須確認本機 `main` 工作樹乾淨、HEAD 已 Push 至 `origin/main`，每台遠端工作樹乾淨且可取得預期 Commit。
+- 部署只允許 `git pull --ff-only origin main`、更新既有 venv requirements、重啟對應既有 systemd，並逐台驗證 Commit、服務 active、Health 與 A/B `TEAM_ID`。
+- 不得修改 `.env`、`.env.admin`、SQLite、Cloudflare、Zabbix、ntopng；不得使用 `git reset --hard`、`git push --force` 或 `apt upgrade`。
+- 遠端有未提交修改、SSH/Git/依賴/重啟/Health 失敗時必須停止並明確報告。
+- sudo 密碼不得寫入腳本；預設使用 `sudo -n`，需要密碼時由操作人使用 `-InteractiveSudo` 在 SSH 終端輸入。

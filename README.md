@@ -108,6 +108,50 @@ python scripts/load_test.py --url http://127.0.0.1:8000 --requests 100 --concurr
 
 ## Ubuntu 部署
 
+### Windows SSH 自動部署
+
+部署腳本只使用 SSH、Git、既有 Python venv 與既有 systemd 服務；不修改 `.env`、`.env.admin`、SQLite、Cloudflare、Zabbix 或 ntopng。預設為只讀檢查，只有加入 `-Deploy` 才會更新遠端。
+
+先確認 SSH aliases `woodfish-a`、`woodfish-b`、`woodfish-monitor` 可免密碼登入：
+
+```powershell
+ssh woodfish-a "hostname"
+ssh woodfish-b "hostname"
+ssh woodfish-monitor "hostname"
+```
+
+只讀檢查三台：
+
+```powershell
+.\scripts\check-servers.ps1 -Target All
+```
+
+只讀檢查單台：
+
+```powershell
+.\scripts\check-servers.ps1 -Target A
+.\scripts\check-servers.ps1 -Target B
+.\scripts\check-servers.ps1 -Target Monitor
+```
+
+部署順序固定為 A、B、Monitor。部署前腳本會確認本機 `main` 工作樹乾淨、`HEAD` 已推送到 `origin/main`，並逐台確認遠端工作樹乾淨且看得到預期 Commit。部署時只重啟對應服務，並逐台驗證 Commit、systemd active、Health 與 A/B `TEAM_ID`。
+
+```powershell
+# 先做完整本機/遠端檢查，不修改遠端
+.\scripts\deploy.ps1 -Target All
+
+# 明確同意後才部署 A、B、Monitor
+.\scripts\deploy.ps1 -Target All -Deploy
+```
+
+若 systemd 重啟需要 sudo 密碼，使用互動式 SSH 輸入，不把密碼寫入腳本：
+
+```powershell
+.\scripts\deploy.ps1 -Target All -Deploy -InteractiveSudo
+```
+
+若任何一台 SSH、Git、依賴安裝、重啟或 Health 驗證失敗，腳本會停止並回報失敗，不會宣稱整體部署成功。腳本不使用 `git reset --hard`、`git push --force`、資料庫重建或 `apt upgrade`。
+
 兩台 VM 各自執行以下步驟，A 使用 `TEAM_ID=A`，B 使用 `TEAM_ID=B`；不要共用資料庫：
 
 ```bash
