@@ -1,7 +1,9 @@
 const playerKey = "woodfish-player-id";
 const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
-let woodfishAudio;
+let audioContext;
+let woodfishBuffer;
+let woodfishBufferPromise;
 let meritSequence = 0;
 const tapAttempts = new Map();
 const tapMetrics = [];
@@ -102,11 +104,28 @@ async function sendTap(item) {
 }
 
 function prepareAudio() {
-  if (woodfishAudio) return true;
+  if (audioContext) return true;
   try {
-    woodfishAudio = new Audio("/static/assets/woodfish-hit.wav");
-    woodfishAudio.preload = "auto";
-    woodfishAudio.volume = .65;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("Web Audio API is unavailable");
+    audioContext = new AudioContextClass();
+    woodfishBufferPromise = fetch("/static/assets/woodfish-hit.wav")
+      .then((response) => {
+        if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then((data) => audioContext.decodeAudioData(data))
+      .then((buffer) => {
+        woodfishBuffer = buffer;
+        return buffer;
+      })
+      .catch(() => {
+        if (!audioWarningShown) {
+          console.warn("Woodfish audio could not be decoded");
+          audioWarningShown = true;
+        }
+        return null;
+      });
     return true;
   } catch {
     if (!audioWarningShown) {
@@ -120,18 +139,14 @@ function prepareAudio() {
 function playWoodfishSound() {
   if (!prepareAudio()) return null;
   try {
-    const sound = woodfishAudio.cloneNode();
-    sound.volume = woodfishAudio.volume;
-    sound.currentTime = 0;
-    const playResult = sound.play();
-    if (playResult) {
-      playResult.catch(() => {
-        if (!audioWarningShown) {
-          console.warn("Woodfish media audio could not be played");
-          audioWarningShown = true;
-        }
-      });
-    }
+    if (!woodfishBuffer) return null;
+    if (audioContext.state === "suspended") void audioContext.resume();
+    const source = audioContext.createBufferSource();
+    const gain = audioContext.createGain();
+    source.buffer = woodfishBuffer;
+    gain.gain.value = .65;
+    source.connect(gain).connect(audioContext.destination);
+    source.start();
     return performance.now();
   } catch {
     if (!audioWarningShown) {
