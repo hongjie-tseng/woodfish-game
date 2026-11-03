@@ -5,16 +5,7 @@ const pending = [];
 let sending = false;
 let muted = false;
 let audioContext;
-const monkQuotes = ["你笑甚麼？", "好玩嗎？", "敲慢一點，老衲頭很暈", "功德不是這樣刷的喔", "施主，手下留情！", "又來？"];
 const $ = (id) => document.getElementById(id);
-
-async function loadScene() {
-  const response = await fetch("/static/assets/monk-scene.svg", { signal: AbortSignal.timeout(10000) });
-  if (!response.ok) {
-    throw new Error(`Scene asset failed: ${response.status}`);
-  }
-  $("scene-mount").innerHTML = await response.text();
-}
 
 function setConnection(text, status) {
   $("connection").textContent = text;
@@ -110,9 +101,6 @@ $("tap-area").addEventListener("pointerdown", () => {
   $("tap-area").classList.add("is-hitting");
   playWoodfishSound();
   showMerit();
-  if (pending.length >= 8 && (pending.length % 5 === 0 || Math.random() < .18)) {
-    $("tap-area").setAttribute("aria-label", monkQuotes[Math.floor(Math.random() * monkQuotes.length)]);
-  }
   pending.push({ tap_id: crypto.randomUUID(), player_id: playerId });
   drain();
 });
@@ -120,10 +108,6 @@ $("sound-toggle").addEventListener("click", () => {
   muted = !muted;
   $("sound-toggle").textContent = muted ? "🔇 音效關" : "🔊 音效開";
   $("sound-toggle").setAttribute("aria-pressed", String(muted));
-});
-loadScene().catch((error) => {
-  console.error(error);
-  setConnection("畫面載入異常", "error");
 });
 refresh();
 setInterval(refresh, 2000);
