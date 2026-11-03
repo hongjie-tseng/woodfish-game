@@ -3,46 +3,92 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#b45309">
+  <meta name="theme-color" content="#f7f3ed">
   <title>電子敲木魚</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
   <main class="game-shell">
-    <header>
-      <p class="eyebrow">功德修行 · <span id="team-name">連線中</span></p>
-      <h1>電子敲木魚</h1>
-      <span id="connection" class="status status--pending">連線中</span>
-    </header>
-    <section class="scoreboard" aria-label="功德統計">
-      <div><strong id="personal-taps">0</strong><span>我的功德</span></div>
-      <div><strong id="team-taps">0</strong><span>全隊功德</span></div>
-      <div><strong id="round-taps">0</strong><span>本回合功德</span></div>
-    </section>
-    <section class="shrine" aria-label="和尚與木魚">
-      <div id="monk" class="monk" aria-hidden="true">
-        <div class="monk__halo"></div>
-        <div class="monk__head">
-          <div class="monk__ear monk__ear--left"></div>
-          <div class="monk__ear monk__ear--right"></div>
-          <div class="monk__brow monk__brow--left"></div>
-          <div class="monk__brow monk__brow--right"></div>
-          <div class="monk__eyes"><i></i><i></i></div>
-          <div class="monk__nose"></div>
-          <div class="monk__mouth">︶</div>
-          <div class="monk__beard"></div>
-        </div>
-        <div class="monk__robe"></div>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">每日修行</p>
+        <h1>電子敲木魚</h1>
       </div>
-      <button id="woodfish" class="woodfish" type="button" aria-label="敲擊木魚">
-        <span class="woodfish__body">木魚</span>
-        <span class="woodfish__mark">◌</span>
-      </button>
-      <div id="merit-layer" class="merit-layer" aria-live="polite"></div>
+      <div class="topbar__right">
+        <span id="team-name" class="team-badge">連線中</span>
+        <span id="connection" class="connection connection--pending">連線中</span>
+      </div>
+    </header>
+
+    <section class="score" aria-label="功德統計">
+      <span class="score__label">我的功德</span>
+      <strong id="personal-taps">0</strong>
+      <span class="score__sub">全隊 <b id="team-taps">0</b> ・ 本回合 <b id="round-taps">0</b></span>
     </section>
-    <p id="round-label" class="round-label">準備中</p>
-    <p id="message" class="message">敲一下木魚，和尚功德 +1</p>
-    <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="false">🔊 音效開</button>
+
+    <button id="tap-area" class="scene-button" type="button" aria-label="敲擊木魚">
+      <svg class="scene" viewBox="0 0 360 450" role="img" aria-label="兩位小和尚與木魚">
+        <defs>
+          <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+            <feOffset dx="0" dy="4"/>
+            <feComponentTransfer><feFuncA type="linear" slope=".18"/></feComponentTransfer>
+            <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <ellipse class="ground-shadow" cx="178" cy="414" rx="122" ry="15"/>
+        <g id="monk-left" class="monk-left" filter="url(#soft-shadow)">
+          <path class="robe robe-left" d="M37 376c8-39 33-61 72-61 41 0 66 25 72 61l-7 32H42z"/>
+          <path class="robe-fold" d="M92 320c-12 30-7 61 10 88M126 320c16 26 20 57 7 87"/>
+          <ellipse class="foot" cx="65" cy="402" rx="30" ry="11"/>
+          <ellipse class="foot" cx="139" cy="402" rx="30" ry="11"/>
+          <path class="hands" d="M76 339c12 5 20 5 32 0M115 339c12 5 20 5 32 0"/>
+          <ellipse class="head" cx="108" cy="275" rx="57" ry="64"/>
+          <path class="ear" d="M53 264c-18-8-20 21-4 28M163 264c18-8 20 21 4 28"/>
+          <path class="brow" d="M77 265q9-7 18 0M120 265q9-7 18 0"/>
+          <path class="closed-eye" d="M79 278q7 6 14 0M121 278q7 6 14 0"/>
+          <path class="nose" d="M108 280v12l-7 3"/>
+          <path class="smile" d="M99 307q9 8 18 0"/>
+          <path class="cheek" d="M68 294h10M138 294h10"/>
+        </g>
+        <g id="wooden-fish" class="wooden-fish" filter="url(#soft-shadow)">
+          <path class="fish-body" d="M59 190c17-44 53-62 91-50 38 12 55 49 42 81-13 32-52 45-94 36l-31-10-15 7-10-9 10-14z"/>
+          <path class="fish-opening" d="M66 220c26-3 54-22 87-39"/>
+          <path class="fish-highlight" d="M116 154q24 2 38 15"/>
+        </g>
+        <g id="monk-right" class="monk-right" filter="url(#soft-shadow)">
+          <path class="robe robe-right" d="M218 351c10-42 32-58 66-58 32 0 52 21 57 58l-8 47h-115z"/>
+          <path class="robe-fold" d="M259 300c-11 38-5 72 11 98M286 301c15 28 17 63 8 96"/>
+          <ellipse class="foot" cx="242" cy="404" rx="27" ry="10"/>
+          <ellipse class="foot" cx="315" cy="404" rx="27" ry="10"/>
+          <ellipse class="head" cx="277" cy="248" rx="45" ry="52"/>
+          <path class="ear" d="M234 240c-15-6-16 17-3 23M320 240c15-6 16 17 3 23"/>
+          <path class="brow" d="M254 239q7-5 14 0M284 239q7-5 14 0"/>
+          <path class="closed-eye" d="M255 250q6 5 12 0M286 250q6 5 12 0"/>
+          <path class="smile" d="M267 274q9 7 18 0"/>
+          <g id="arm" class="arm">
+            <path class="sleeve" d="M246 302c-19 4-36-5-49-25l17-12c13 11 26 14 39 8z"/>
+            <path class="arm-skin" d="M207 277l-29-39 9-7 34 36z"/>
+            <g id="mallet" class="mallet">
+              <rect class="mallet-handle" x="170" y="214" width="9" height="70" rx="4" transform="rotate(-37 174 249)"/>
+              <circle class="mallet-head" cx="157" cy="208" r="17"/>
+            </g>
+          </g>
+        </g>
+        <g id="impact-effect" class="impact-effect">
+          <path d="M160 180l-8-16M176 178l1-18M191 185l10-14"/>
+        </g>
+      </svg>
+      <span id="merit-layer" class="merit-layer" aria-live="polite"></span>
+    </button>
+
+    <footer class="bottom">
+      <p id="message" class="message">點一下，讓和尚幫你累積功德</p>
+      <div class="bottom__controls">
+        <span id="round-label" class="round-label">回合準備中</span>
+        <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="false">🔊 音效開</button>
+      </div>
+    </footer>
   </main>
   <script src="/static/js/app.js"></script>
 </body>

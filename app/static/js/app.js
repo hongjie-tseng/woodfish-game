@@ -3,7 +3,6 @@ const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
 const pending = [];
 let sending = false;
-let localTaps = 0;
 let muted = false;
 let audioContext;
 const monkQuotes = ["你笑甚麼？", "好玩嗎？", "敲慢一點，老衲頭很暈", "功德不是這樣刷的喔", "施主，手下留情！", "又來？"];
@@ -11,7 +10,7 @@ const $ = (id) => document.getElementById(id);
 
 function setConnection(text, status) {
   $("connection").textContent = text;
-  $("connection").className = `status status--${status}`;
+  $("connection").className = `connection connection--${status}`;
 }
 
 function render(stats) {
@@ -100,16 +99,13 @@ function showMerit() {
   setTimeout(() => merit.remove(), 950);
 }
 
-$("woodfish").addEventListener("pointerdown", () => {
-  $("woodfish").classList.add("is-tapped");
-  setTimeout(() => $("woodfish").classList.remove("is-tapped"), 100);
-  $("monk").classList.remove("is-hit");
-  void $("monk").offsetWidth;
-  $("monk").classList.add("is-hit");
+$("tap-area").addEventListener("pointerdown", () => {
+  $("tap-area").classList.remove("is-hitting");
+  void $("tap-area").offsetWidth;
+  $("tap-area").classList.add("is-hitting");
   playWoodfishSound();
   showMerit();
-  localTaps += 1;
-  if (localTaps >= 8 && (localTaps % 5 === 0 || Math.random() < .18)) {
+  if (pending.length >= 8 && (pending.length % 5 === 0 || Math.random() < .18)) {
     $("message").textContent = monkQuotes[Math.floor(Math.random() * monkQuotes.length)];
   } else {
     $("message").textContent = "功德 +1，和尚表示頭很痛";
