@@ -39,6 +39,12 @@ class VersionResponse(BaseModel):
     commit: str
 
 
+class MetricsResponse(BaseModel):
+    team_id: str
+    tap_requests_total: int
+    server_time: datetime
+
+
 class RoundActionRequest(BaseModel):
     name: str | None = None
 

@@ -16,6 +16,30 @@ python -m uvicorn app.main:app --reload
 
 頁面右下角會顯示 `VERSION` 與執行中 Git Commit 短 SHA。`GET /api/version` 也會回傳相同資訊；Git 資訊無法取得時會顯示 `unknown`，不會使用假 SHA。
 
+### Zabbix HTTP 敲擊請求監控
+
+每台 Game Server 提供唯讀 `GET /api/metrics`。回應中的 `tap_requests_total` 是該台伺服器實際收到的 `POST /api/tap` HTTP 請求累積數，包含成功、失敗、重複與請求格式驗證失敗；它不是功德數、TCP 封包數或流量 Bytes。
+
+```json
+{
+  "team_id": "A",
+  "tap_requests_total": 1234,
+  "server_time": "2026-11-03T14:00:00Z"
+}
+```
+
+Zabbix 7.0 LTS 可在 A、B 主機各建立 HTTP agent item：
+
+- URL：`http://127.0.0.1:8000/api/metrics`（在各 Game Server 本機監控時）
+- Type of information：Numeric (unsigned)
+- Preprocessing：JSONPath `$.tap_requests_total`
+- Units：`req`
+- Storage/速率：使用 **Change per second**（或在圖表中選每秒變化）得到 Requests/s
+
+若由 VM 1 監控，URL 改為 `http://192.168.26.133:8000/api/metrics` 與 `http://192.168.26.135:8000/api/metrics`。請確保 Ubuntu 防火牆只允許監控來源；此 API 只讀、不改變玩家 API。
+
+計數器儲存在各自 SQLite 的 `game_state.tap_requests_total`，並以 SQLite 交易更新，可處理並行請求。服務重啟不會歸零；只有刪除/重建資料庫才會歸零。管理頁面的「重設功德」不會重設此 HTTP 請求計數器。
+
 ## 回合管理
 
 管理指令只在伺服器本機執行，不提供公開重設 API：
@@ -132,6 +156,8 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 ## 監控解讀
 
 Zabbix 可觀察遊戲伺服器介面的 inbound/outbound、CPU、記憶體與可用的 packet rate。ntopng 能看到的端點與協定取決於 NAT、VMware 與 Cloudflare Tunnel；程式的 HTTP request 次數不等於網路封包數，也不代表能看到玩家原始 IP。請依實際監控畫面記錄結果。
+
+`/api/metrics` 的 `tap_requests_total` 是應用層收到的 HTTP `POST /api/tap` 請求數；Zabbix 的 Change per second 是 Requests/s，不等於 TCP 封包速率或網路流量 Bytes/s。
 
 ## Git
 

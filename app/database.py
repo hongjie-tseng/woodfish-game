@@ -25,6 +25,7 @@ def initialize_database(
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 total_taps INTEGER NOT NULL DEFAULT 0,
                 round_taps INTEGER NOT NULL DEFAULT 0,
+                tap_requests_total INTEGER NOT NULL DEFAULT 0,
                 round_name TEXT NOT NULL DEFAULT '課堂展示回合',
                 round_status TEXT NOT NULL DEFAULT 'active',
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -44,6 +45,14 @@ def initialize_database(
                 ON processed_taps(created_at);
             """
         )
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(game_state)").fetchall()
+        }
+        if "tap_requests_total" not in columns:
+            connection.execute(
+                "ALTER TABLE game_state ADD COLUMN tap_requests_total INTEGER NOT NULL DEFAULT 0"
+            )
         connection.execute(
             """
             INSERT OR IGNORE INTO game_state (id, round_name, round_status)

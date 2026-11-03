@@ -39,6 +39,7 @@
 - FastAPI、SQLite、回合 CLI 管理及基本自動化測試。
 - 相對 API 路徑，適合 Cloudflare Tunnel 部署。
 - Zabbix/ntopng 流量監控實驗用途的部署文件與負載測試工具。
+- 每台 Game Server 提供唯讀 `GET /api/metrics`，以 `tap_requests_total` 統計實際收到的 `POST /api/tap` 請求，包含成功、失敗、重複與格式驗證失敗。
 
 ### 待驗證
 
@@ -46,6 +47,7 @@
 - 兩台 Ubuntu VM 重新部署後的 `/api/version` SHA 是否一致。
 - Cloudflare Tunnel 下手機重新整理是否取得最新 HTML、CSS、JavaScript。
 - Zabbix 與 ntopng 實際可觀察到的流量、協定與封包限制。
+- Zabbix HTTP agent 以 JSONPath `$.tap_requests_total` 讀取計數器，並以 Change per second 顯示 Requests/s。
 
 ### 尚未完成
 
@@ -71,6 +73,16 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 ```
 
 回傳的 `version` 與 `commit` 可用來確認兩台伺服器是否執行相同版本。
+
+## HTTP 敲擊請求監控需求
+
+- A、B 各自提供 `GET /api/metrics`，資料來自各自 SQLite，不需要同步。
+- JSON 至少包含 `team_id`、`tap_requests_total` 與 `server_time`。
+- `tap_requests_total` 是實際進入應用程式的 `POST /api/tap` 請求總數，包含成功、失敗、重複與 Pydantic 請求格式驗證失敗；不可用功德數代替。
+- 計數器使用 SQLite 持久化交易更新，可處理並行請求；服務重啟後保留，刪除/重建資料庫才歸零。
+- Zabbix 7.0 LTS 使用 HTTP agent 讀取 `/api/metrics`，JSONPath `$.tap_requests_total`，再使用 Change per second 計算 Requests/s。
+- 這是 HTTP 應用層請求數，不是 TCP 封包數、封包速率或網路流量 Bytes；ntopng/Zabbix 網路流量圖表需分開解讀。
+- 管理頁面的功德重設不得清除 `tap_requests_total`。
 
 ## A/B 集中管理需求
 

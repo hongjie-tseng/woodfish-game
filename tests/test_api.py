@@ -36,6 +36,21 @@ def test_stats_and_health(tmp_path, monkeypatch):
     assert stats.json()["team_taps"] == 1
 
 
+def test_metrics_counts_success_duplicate_and_failed_tap_requests(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    assert client.post(
+        "/api/tap", json={"tap_id": "metrics-tap-1", "player_id": "metrics-player-1"}
+    ).status_code == 200
+    assert client.post(
+        "/api/tap", json={"tap_id": "metrics-tap-1", "player_id": "metrics-player-1"}
+    ).status_code == 200
+    assert client.post("/api/tap", json={"invalid": True}).status_code == 422
+    metrics = client.get("/api/metrics")
+    assert metrics.status_code == 200
+    assert metrics.json()["tap_requests_total"] == 3
+    assert metrics.headers["cache-control"] == "no-store, max-age=0"
+
+
 def test_version_endpoint_and_index_cache_headers(tmp_path, monkeypatch):
     client, main = make_client(tmp_path, monkeypatch)
     version = client.get("/api/version")
@@ -94,3 +109,4 @@ def test_admin_reset_clears_team_and_all_player_scores(tmp_path, monkeypatch):
     assert response.json()["round_taps"] == 0
     assert client.get("/api/stats?player_id=reset-player-a").json()["personal_taps"] == 0
     assert client.get("/api/stats?player_id=reset-player-b").json()["personal_taps"] == 0
+    assert client.get("/api/metrics").json()["tap_requests_total"] == 2

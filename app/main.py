@@ -14,6 +14,7 @@ from .database import connect, initialize_database, transaction
 from .models import (
     AdminStatusResponse,
     ConfigResponse,
+    MetricsResponse,
     RoundActionRequest,
     StatsResponse,
     TapRequest,
@@ -39,6 +40,17 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="電子敲木魚", version="1.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+
+@app.middleware("http")
+async def count_tap_requests(request: Request, call_next):
+    if request.method == "POST" and request.url.path == "/api/tap":
+        with connect(settings.database_path) as connection:
+            connection.execute(
+                "UPDATE game_state SET tap_requests_total = tap_requests_total + 1 WHERE id = 1"
+            )
+            connection.commit()
+    return await call_next(request)
 
 
 def project_version() -> str:
@@ -103,6 +115,20 @@ async def index() -> HTMLResponse:
 async def get_version(response: Response) -> VersionResponse:
     response.headers["Cache-Control"] = "no-store, max-age=0"
     return VersionResponse(version=project_version(), commit=git_commit())
+
+
+@app.get("/api/metrics", response_model=MetricsResponse)
+async def get_metrics(response: Response) -> MetricsResponse:
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    with connect(settings.database_path) as connection:
+        state = connection.execute(
+            "SELECT tap_requests_total FROM game_state WHERE id = 1"
+        ).fetchone()
+    return MetricsResponse(
+        team_id=settings.team_id,
+        tap_requests_total=state["tap_requests_total"],
+        server_time=datetime.now(timezone.utc),
+    )
 
 
 @app.get("/api/admin/status", response_model=AdminStatusResponse)
