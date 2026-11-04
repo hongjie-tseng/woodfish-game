@@ -1,5 +1,9 @@
+import gc
+import os
+import sqlite3
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -195,3 +199,26 @@ def test_startup_preserves_status_and_records_event(tmp_path, monkeypatch):
         1,
         "Persisted round status; no startup override applied",
     )
+
+
+def test_connect_context_closes_connection(tmp_path, monkeypatch):
+    _, main = make_client(tmp_path, monkeypatch)
+    with main.connect(main.settings.database_path) as connection:
+        connection.execute("SELECT 1").fetchone()
+    with pytest.raises(sqlite3.ProgrammingError):
+        connection.execute("SELECT 1")
+
+
+def test_requests_do_not_leak_database_connections(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    client.get("/health")
+    gc.disable()
+    try:
+        before = len(os.listdir("/proc/self/fd")) if os.path.isdir("/proc/self/fd") else None
+        for _ in range(50):
+            assert client.get("/health").status_code == 200
+        after = len(os.listdir("/proc/self/fd")) if before is not None else None
+    finally:
+        gc.enable()
+    if before is not None:
+        assert after - before < 10

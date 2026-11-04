@@ -4,9 +4,19 @@ from pathlib import Path
 from typing import Iterator
 
 
+class ClosingConnection(sqlite3.Connection):
+    """sqlite3's own context manager only commits or rolls back; also close so file descriptors are released."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connect(database_path: str) -> sqlite3.Connection:
     Path(database_path).parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database_path, timeout=30.0)
+    connection = sqlite3.connect(database_path, timeout=30.0, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA busy_timeout=30000")
