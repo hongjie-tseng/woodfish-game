@@ -12,8 +12,6 @@ import subprocess
 import time
 import uuid
 
-import httpx
-
 # The service cgroup counts every Uvicorn worker, not only the main process.
 PROBE = (
     "echo \"{\\\"cpu\\\":\\\"$(head -1 /proc/stat)\\\","
@@ -135,6 +133,9 @@ async def send_at_rate_raw(url: str, rate: float, duration: float, max_inflight:
 
 
 async def send_at_rate(url: str, rate: float, duration: float, max_inflight: int, tag: str) -> dict:
+    # Imported here so --engine raw runs on a machine with only the Python standard library.
+    import httpx
+
     result = {"sent": 0, "ok": 0, "errors": {}, "skipped": 0, "latencies": []}
     limits = httpx.Limits(max_connections=max_inflight, max_keepalive_connections=max_inflight)
     async with httpx.AsyncClient(base_url=url, timeout=10.0, limits=limits, trust_env=False) as client:
@@ -195,6 +196,7 @@ def main() -> None:
     parser.add_argument("--processes", type=int, default=4, help="每台使用幾個送出程序")
     parser.add_argument("--max-inflight", type=int, default=500, help="每個程序同時等待中的請求上限")
     parser.add_argument("--keep-going", action="store_true", help="撐不住後仍繼續下一級")
+    parser.add_argument("--max-p95", type=float, default=1000, help="p95 延遲超過幾毫秒算撐不住；經 Cloudflare 來回約 300 ms，外網建議 3000")
     parser.add_argument("--engine", choices=("httpx", "raw"), default="httpx",
                         help="raw = 精簡 HTTP/1.1 長連線用戶端（http 或 https），可送出更高速率")
     parser.add_argument("--tunnel", help="經 Cloudflare 測試時，執行 cloudflared 那台的 SSH 別名，例如 woodfish-monitor")
@@ -250,7 +252,7 @@ def main() -> None:
                     row["bytes_per_tap"] = (server["rx"] + server["tx"]) / ok
                     row["rx_mbps"] = server["rx"] * 8 / server["elapsed"] / 1e6
                     row["tx_mbps"] = server["tx"] * 8 / server["elapsed"] / 1e6
-                row["broken"] = row["success"] < .99 or row["p95"] > 1000 or row["achieved"] < rate * .9
+                row["broken"] = row["success"] < .99 or row["p95"] > args.max_p95 or row["achieved"] < rate * .9
                 broken = broken or row["broken"]
                 report.append(row)
                 line = (f"[{t['name']}] 成功 {ok}/{attempted} ({row['success']:.1%})  實際 {row['achieved']:.0f}/秒  "
