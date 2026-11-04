@@ -1,18 +1,19 @@
+import asyncio
+import contextlib
 import logging
 import subprocess
-import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .database import connect, initialize_database, insert_audit_log, transaction
+from .store import FLUSH_INTERVAL_SECONDS, RoundNotActive, TapStore
 from .models import (
     AdminStatusResponse,
     AdminAuditLogResponse,
@@ -32,10 +33,32 @@ settings = get_settings()
 PROJECT_ROOT = Path(__file__).parent.parent
 VERSION_FILE = PROJECT_ROOT / "VERSION"
 INDEX_FILE = Path(__file__).parent / "templates" / "index.html"
+_store: TapStore | None = None
+
+
+def get_store() -> TapStore:
+    global _store
+    if _store is None or _store.database_path != settings.database_path:
+        _store = TapStore(settings.database_path)
+    return _store
+
+
+async def flush_periodically(store: TapStore) -> None:
+    while True:
+        await asyncio.sleep(FLUSH_INTERVAL_SECONDS)
+        try:
+            await asyncio.to_thread(store.flush)
+        except Exception:
+            logger.exception("Writing taps to SQLite failed; retrying on the next interval")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Uvicorn writes an access log line only while "uvicorn.access" has handlers; at thousands of
+    # taps per second that logging costs more CPU than the taps, and the demo does not need it.
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = False
     state_created = initialize_database(
         settings.database_path, settings.round_name, settings.round_status
     )
@@ -60,29 +83,31 @@ async def lifespan(_: FastAPI):
             git_commit=git_commit(),
             state_initialized=state_created,
         )
+    store = get_store()
+    flusher = asyncio.create_task(flush_periodically(store))
     logger.info("Woodfish server started: team=%s database=%s", settings.team_id, settings.database_path)
     yield
+    flusher.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await flusher
+    await asyncio.to_thread(store.flush)
+
+
+class CountTapRequests:
+    """Counts every POST /api/tap, including ones that later fail validation, before routing."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == "/api/tap":
+            get_store().count_request()
+        await self.app(scope, receive, send)
 
 
 app = FastAPI(title="電子敲木魚", version="1.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
-
-
-def increment_tap_requests() -> None:
-    with connect(settings.database_path) as connection:
-        connection.execute(
-            "UPDATE game_state SET tap_requests_total = tap_requests_total + 1 WHERE id = 1"
-        )
-        connection.commit()
-
-
-# SQLite calls block, so they run in the thread pool; database endpoints below are plain "def"
-# for the same reason, otherwise one slow write stalls every request on the event loop.
-@app.middleware("http")
-async def count_tap_requests(request: Request, call_next):
-    if request.method == "POST" and request.url.path == "/api/tap":
-        await run_in_threadpool(increment_tap_requests)
-    return await call_next(request)
+app.add_middleware(CountTapRequests)
 
 
 def project_version() -> str:
@@ -124,20 +149,6 @@ def require_admin_proxy(request: Request) -> None:
         raise HTTPException(status_code=403, detail="管理 API 僅接受 VM 1")
 
 
-def current_state(connection, player_id: str) -> dict:
-    state = connection.execute("SELECT * FROM game_state WHERE id = 1").fetchone()
-    player = connection.execute(
-        "SELECT tap_count FROM player_totals WHERE player_id = ?", (player_id,)
-    ).fetchone()
-    return {
-        "personal_taps": player["tap_count"] if player else 0,
-        "team_taps": state["total_taps"],
-        "round_taps": state["round_taps"],
-        "round_name": state["round_name"],
-        "round_status": state["round_status"],
-    }
-
-
 @app.get("/", include_in_schema=False)
 async def index() -> HTMLResponse:
     html = INDEX_FILE.read_text(encoding="utf-8")
@@ -151,6 +162,9 @@ async def get_version(response: Response) -> VersionResponse:
     return VersionResponse(version=project_version(), commit=git_commit())
 
 
+# Zabbix and the admin console read the flushed values in SQLite rather than one process's memory:
+# with several Uvicorn workers each holds different unflushed taps, and a counter that moves backwards
+# between polls would break Zabbix "Change per second". The values lag by at most one flush interval.
 @app.get("/api/metrics", response_model=MetricsResponse)
 def get_metrics(response: Response) -> MetricsResponse:
     response.headers["Cache-Control"] = "no-store, max-age=0"
@@ -207,7 +221,7 @@ def admin_audit_logs(
 
 
 @app.post("/api/admin/round/{action}", response_model=AdminStatusResponse)
-def admin_round_action(
+async def admin_round_action(
     action: str,
     request: Request,
     payload: RoundActionRequest | None = None,
@@ -216,6 +230,18 @@ def admin_round_action(
     if action not in {"start", "pause", "resume", "end", "reset"}:
         raise HTTPException(status_code=404, detail="Unknown round action")
     source_ip = request.client.host if request.client else None
+    rejected_error = await asyncio.to_thread(
+        get_store().admin,
+        lambda: apply_round_action(action, payload, source_ip),
+        clear_duplicates=action == "reset",
+    )
+    if rejected_error is not None:
+        raise HTTPException(status_code=409, detail=rejected_error)
+    return await asyncio.to_thread(admin_status, request)
+
+
+def apply_round_action(action: str, payload: RoundActionRequest | None, source_ip: str | None) -> str | None:
+    """Runs the round transaction and returns the rejection reason, if any."""
     rejected_error = None
     with transaction(settings.database_path) as connection:
         state = connection.execute(
@@ -294,9 +320,7 @@ def admin_round_action(
                 source_ip=source_ip,
                 success=True,
             )
-    if rejected_error is not None:
-        raise HTTPException(status_code=409, detail=rejected_error)
-    return admin_status(request)
+    return rejected_error
 
 
 @app.get("/health")
@@ -311,9 +335,8 @@ def health() -> dict:
 
 
 @app.get("/api/config", response_model=ConfigResponse)
-def get_config() -> ConfigResponse:
-    with connect(settings.database_path) as connection:
-        state = connection.execute("SELECT round_name, round_status FROM game_state WHERE id = 1").fetchone()
+async def get_config() -> ConfigResponse:
+    state = get_store().snapshot()
     return ConfigResponse(
         team_id=settings.team_id,
         team_name=settings.team_name,
@@ -324,56 +347,22 @@ def get_config() -> ConfigResponse:
 
 
 @app.get("/api/stats", response_model=StatsResponse)
-def get_stats(player_id: str) -> StatsResponse:
+async def get_stats(player_id: str) -> StatsResponse:
     if not player_id or len(player_id) > 100:
         raise HTTPException(status_code=422, detail="Invalid player_id")
-    with connect(settings.database_path) as connection:
-        state = current_state(connection, player_id)
-    return StatsResponse(server_time=datetime.now(timezone.utc), **state)
+    state = get_store().snapshot(player_id)
+    return StatsResponse(
+        server_time=datetime.now(timezone.utc),
+        **{key: state[key] for key in ("personal_taps", "team_taps", "round_taps", "round_name", "round_status")},
+    )
 
 
 @app.post("/api/tap", response_model=TapResponse)
-def tap(payload: TapRequest, request: Request) -> TapResponse:
-    started = time.monotonic()
+async def tap(payload: TapRequest) -> TapResponse:
     try:
-        with transaction(settings.database_path) as connection:
-            existing = connection.execute(
-                "SELECT player_id FROM processed_taps WHERE tap_id = ?", (payload.tap_id,)
-            ).fetchone()
-            if existing:
-                state = current_state(connection, payload.player_id)
-                return TapResponse(accepted=True, duplicate=True, **{
-                    key: state[key] for key in ("personal_taps", "team_taps", "round_taps", "round_status")
-                })
-
-            state = connection.execute("SELECT round_status FROM game_state WHERE id = 1").fetchone()
-            if state["round_status"] != "active":
-                raise HTTPException(status_code=409, detail="本回合目前未進行")
-
-            connection.execute(
-                "INSERT INTO processed_taps (tap_id, player_id) VALUES (?, ?)",
-                (payload.tap_id, payload.player_id),
-            )
-            connection.execute(
-                """
-                INSERT INTO player_totals (player_id, tap_count) VALUES (?, 1)
-                ON CONFLICT(player_id) DO UPDATE SET
-                    tap_count = tap_count + 1,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (payload.player_id,),
-            )
-            connection.execute(
-                """
-                UPDATE game_state SET total_taps = total_taps + 1,
-                    round_taps = round_taps + 1, updated_at = CURRENT_TIMESTAMP
-                WHERE id = 1
-                """
-            )
-            result = current_state(connection, payload.player_id)
-            return TapResponse(accepted=True, duplicate=False, **{
-                key: result[key] for key in ("personal_taps", "team_taps", "round_taps", "round_status")
-            })
-    finally:
-        elapsed = (time.monotonic() - started) * 1000
-        logger.debug("tap request completed in %.1fms from %s", elapsed, request.client.host if request.client else "unknown")
+        duplicate, state = get_store().tap(payload.tap_id, payload.player_id)
+    except RoundNotActive:
+        raise HTTPException(status_code=409, detail="本回合目前未進行") from None
+    return TapResponse(accepted=True, duplicate=duplicate, **{
+        key: state[key] for key in ("personal_taps", "team_taps", "round_taps", "round_status")
+    })

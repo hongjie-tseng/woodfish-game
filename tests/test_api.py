@@ -41,7 +41,7 @@ def test_stats_and_health(tmp_path, monkeypatch):
 
 
 def test_metrics_counts_success_duplicate_and_failed_tap_requests(tmp_path, monkeypatch):
-    client, _ = make_client(tmp_path, monkeypatch)
+    client, main = make_client(tmp_path, monkeypatch)
     assert client.post(
         "/api/tap", json={"tap_id": "metrics-tap-1", "player_id": "metrics-player-1"}
     ).status_code == 200
@@ -49,6 +49,7 @@ def test_metrics_counts_success_duplicate_and_failed_tap_requests(tmp_path, monk
         "/api/tap", json={"tap_id": "metrics-tap-1", "player_id": "metrics-player-1"}
     ).status_code == 200
     assert client.post("/api/tap", json={"invalid": True}).status_code == 422
+    main.get_store().flush()
     metrics = client.get("/api/metrics")
     assert metrics.status_code == 200
     assert metrics.json()["tap_requests_total"] == 3
@@ -126,12 +127,13 @@ def test_admin_api_rejects_non_monitor_source(tmp_path, monkeypatch):
 
 
 def test_admin_reset_clears_team_and_all_player_scores(tmp_path, monkeypatch):
-    client, _ = make_client(tmp_path, monkeypatch)
+    client, main = make_client(tmp_path, monkeypatch)
     for tap_id, player_id in (("reset-tap-a", "reset-player-a"), ("reset-tap-b", "reset-player-b")):
         assert client.post(
             "/api/tap", json={"tap_id": tap_id, "player_id": player_id}
         ).status_code == 200
 
+    main.get_store().flush()
     before = client.get("/api/admin/status").json()
     assert before["team_taps"] == 2
     response = client.post("/api/admin/round/reset", json={})
@@ -145,6 +147,7 @@ def test_admin_reset_clears_team_and_all_player_scores(tmp_path, monkeypatch):
     assert after["tap_requests_total"] == 2
     assert after["tap_requests_since_reset"] == 0
     client.post("/api/tap", json={"tap_id": "reset-tap-c", "player_id": "reset-player-a"})
+    main.get_store().flush()
     assert client.get("/api/admin/status").json()["tap_requests_since_reset"] == 1
     logs = client.get("/api/admin/audit-logs?limit=1").json()
     assert logs[0]["action"] == "reset"
@@ -231,9 +234,10 @@ def test_requests_do_not_leak_database_connections(tmp_path, monkeypatch):
 
 
 def test_admin_status_reports_tap_requests(tmp_path, monkeypatch):
-    client, _ = make_client(tmp_path, monkeypatch)
+    client, main = make_client(tmp_path, monkeypatch)
     client.post("/api/tap", json={"tap_id": "tap-unique-9", "player_id": "player-unique-9"})
     client.post("/api/tap", json={"tap_id": "tap-unique-9", "player_id": "player-unique-9"})
+    main.get_store().flush()
     status = client.get("/api/admin/status").json()
     assert status["team_taps"] == 1
     assert status["tap_requests_total"] == 2
@@ -249,3 +253,96 @@ def test_admin_rates_use_recent_window(monkeypatch):
     assert admin_main.rate_for("A", 10.0, window=5, field=2, scale=1) == 3.0
     admin_main.SAMPLES["B"].append((0.0, 0, 0))
     assert admin_main.rate_for("B", 0.0, window=5, scale=1) is None
+
+
+def read_game_state(main):
+    with main.connect(main.settings.database_path) as connection:
+        return dict(connection.execute("SELECT * FROM game_state WHERE id = 1").fetchone())
+
+
+def test_taps_are_written_to_sqlite_in_batches(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    for index in range(5):
+        client.post("/api/tap", json={"tap_id": f"batch-tap-{index}", "player_id": "batch-player"})
+    # Phones see their taps immediately; SQLite, Zabbix and the console catch up on the next flush.
+    assert client.get("/api/stats?player_id=batch-player").json()["team_taps"] == 5
+    assert read_game_state(main)["total_taps"] == 0
+    assert client.get("/api/metrics").json()["tap_requests_total"] == 0
+    main.get_store().flush()
+    assert client.get("/api/metrics").json()["tap_requests_total"] == 5
+    state = read_game_state(main)
+    assert (state["total_taps"], state["round_taps"], state["tap_requests_total"]) == (5, 5, 5)
+    with main.connect(main.settings.database_path) as connection:
+        assert connection.execute("SELECT tap_count FROM player_totals WHERE player_id = 'batch-player'").fetchone()[0] == 5
+        assert connection.execute("SELECT COUNT(*) FROM processed_taps").fetchone()[0] == 5
+    assert client.get("/api/stats?player_id=batch-player").json()["personal_taps"] == 5
+
+
+def test_shutdown_writes_pending_taps(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    with client:
+        client.post("/api/tap", json={"tap_id": "shutdown-tap-1", "player_id": "shutdown-player"})
+    assert read_game_state(main)["total_taps"] == 1
+
+
+def test_failed_flush_keeps_taps_for_the_next_attempt(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    client.post("/api/tap", json={"tap_id": "retry-tap-1", "player_id": "retry-player"})
+    import app.store
+
+    real_transaction = app.store.transaction
+    monkeypatch.setattr(app.store, "transaction", lambda path: (_ for _ in ()).throw(sqlite3.OperationalError("disk I/O error")))
+    with pytest.raises(sqlite3.OperationalError):
+        main.get_store().flush()
+    assert client.get("/api/stats?player_id=retry-player").json()["team_taps"] == 1
+    monkeypatch.setattr(app.store, "transaction", real_transaction)
+    main.get_store().flush()
+    assert read_game_state(main)["total_taps"] == 1
+
+
+def test_flush_picks_up_changes_made_directly_in_sqlite(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    client.get("/api/config")
+    with main.connect(main.settings.database_path) as connection:
+        connection.execute("UPDATE game_state SET round_status = 'paused' WHERE id = 1")
+        connection.commit()
+    main.get_store().flush()
+    response = client.post("/api/tap", json={"tap_id": "cli-tap-1", "player_id": "cli-player-1"})
+    assert response.status_code == 409
+
+
+def test_retry_after_restart_is_not_counted_twice(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    client.post("/api/tap", json={"tap_id": "restart-tap-1", "player_id": "restart-player"})
+    main.get_store().flush()
+    monkeypatch.setattr(main, "_store", None)
+    client.post("/api/tap", json={"tap_id": "restart-tap-1", "player_id": "restart-player"})
+    main.get_store().flush()
+    assert read_game_state(main)["total_taps"] == 1
+    assert client.get("/api/stats?player_id=restart-player").json()["personal_taps"] == 1
+
+
+def test_admin_action_writes_pending_taps_first(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    client.post("/api/tap", json={"tap_id": "admin-tap-1", "player_id": "admin-player"})
+    assert client.post("/api/admin/round/pause", json={}).json()["team_taps"] == 1
+    assert read_game_state(main)["total_taps"] == 1
+
+
+def test_worker_processes_add_their_taps_without_overwriting(tmp_path, monkeypatch):
+    _, main = make_client(tmp_path, monkeypatch)
+    from app.store import TapStore
+
+    first, second = TapStore(main.settings.database_path), TapStore(main.settings.database_path)
+    first.tap("worker-tap-1", "worker-player")
+    second.tap("worker-tap-2", "worker-player")
+    second.tap("worker-tap-1", "worker-player")  # a retry that reached the other worker
+    first.count_request()
+    second.count_request()
+    first.flush()
+    second.flush()
+    state = read_game_state(main)
+    assert (state["total_taps"], state["tap_requests_total"]) == (2, 2)
+    assert first.snapshot("worker-player")["personal_taps"] == 1  # reloaded before second flushed
+    first.flush()
+    assert first.snapshot("worker-player")["personal_taps"] == 2
