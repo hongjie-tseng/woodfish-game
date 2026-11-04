@@ -40,7 +40,7 @@ Zabbix 7.0 LTS 可在 A、B 主機各建立 HTTP agent item：
 
 若由 VM 1 監控，URL 改為 `http://192.168.26.133:8000/api/metrics` 與 `http://192.168.26.135:8000/api/metrics`。請確保 Ubuntu 防火牆只允許監控來源；此 API 只讀、不改變玩家 API。
 
-計數器儲存在各自 SQLite 的 `game_state.tap_requests_total`，並以 SQLite 交易更新，可處理並行請求。服務重啟不會歸零；只有刪除/重建資料庫才會歸零。管理頁面的「重設功德」不會重設此 HTTP 請求計數器。
+計數器儲存在各自 SQLite 的 `game_state.tap_requests_total`，並以 SQLite 交易更新，可處理並行請求。服務重啟不會歸零；只有刪除/重建資料庫才會歸零。管理頁面的「重設功德」不會重設此 HTTP 請求計數器，以免 Zabbix 的 Change per second 出現負值；重設時會把當下的值記在 `tap_requests_reset_base`，集中管理頁面的「累計請求（重設後）」顯示兩者的差，因此會從 0 重新計算。
 
 ## 回合管理
 

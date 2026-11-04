@@ -30,7 +30,7 @@ function teamFields(team) {
     recent_rate_per_minute: rateText(team.recent_rate_per_minute, "/分"),
     taps_per_second: rateText(team.taps_per_second, "/秒"),
     requests_per_second: rateText(team.requests_per_second, "/秒"),
-    tap_requests_total: team.tap_requests_total,
+    tap_requests_since_reset: team.tap_requests_since_reset ?? team.tap_requests_total,
     meta: `版本 v${team.version} · ${team.commit}`,
   };
 }
@@ -51,7 +51,7 @@ function teamCard(team) {
         <div class="metric"><small>近 60 秒</small><strong>${field("recent_rate_per_minute")}</strong></div>
         <div class="metric"><small>點擊（近 5 秒）</small><strong>${field("taps_per_second")}</strong></div>
         <div class="metric"><small>請求（近 5 秒）</small><strong>${field("requests_per_second")}</strong></div>
-        <div class="metric"><small>累計請求</small><strong>${field("tap_requests_total")}</strong></div>
+        <div class="metric"><small>累計請求（重設後）</small><strong>${field("tap_requests_since_reset")}</strong></div>
       </div>
       <div class="meta">${field("meta")}</div>` :
       `<div class="meta">${escapeHtml(team.detail || "無法取得伺服器狀態")}</div>`}

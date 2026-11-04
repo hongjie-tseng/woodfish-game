@@ -37,6 +37,7 @@ def initialize_database(
                 total_taps INTEGER NOT NULL DEFAULT 0,
                 round_taps INTEGER NOT NULL DEFAULT 0,
                 tap_requests_total INTEGER NOT NULL DEFAULT 0,
+                tap_requests_reset_base INTEGER NOT NULL DEFAULT 0,
                 round_name TEXT NOT NULL DEFAULT '課堂展示回合',
                 round_status TEXT NOT NULL DEFAULT 'active',
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -79,10 +80,11 @@ def initialize_database(
         existing_state = connection.execute(
             "SELECT 1 FROM game_state WHERE id = 1"
         ).fetchone()
-        if "tap_requests_total" not in columns:
-            connection.execute(
-                "ALTER TABLE game_state ADD COLUMN tap_requests_total INTEGER NOT NULL DEFAULT 0"
-            )
+        for column in ("tap_requests_total", "tap_requests_reset_base"):
+            if column not in columns:
+                connection.execute(
+                    f"ALTER TABLE game_state ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                )
         audit_columns = {
             row["name"]
             for row in connection.execute("PRAGMA table_info(admin_audit_logs)").fetchall()

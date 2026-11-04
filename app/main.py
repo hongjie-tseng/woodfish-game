@@ -171,6 +171,7 @@ async def admin_status(request: Request) -> AdminStatusResponse:
         team_taps=state["total_taps"],
         round_taps=state["round_taps"],
         tap_requests_total=state["tap_requests_total"],
+        tap_requests_since_reset=state["tap_requests_total"] - state["tap_requests_reset_base"],
         version=project_version(),
         commit=git_commit(),
         server_time=datetime.now(timezone.utc),
@@ -260,10 +261,13 @@ async def admin_round_action(
                 "UPDATE game_state SET round_status = 'ended', updated_at = CURRENT_TIMESTAMP WHERE id = 1"
             )
         elif rejected_error is None:
+            # tap_requests_total stays monotonic for Zabbix Change per second; the console counts from this base.
             connection.execute(
                 """
                 UPDATE game_state
-                SET total_taps = 0, round_taps = 0, updated_at = CURRENT_TIMESTAMP
+                SET total_taps = 0, round_taps = 0,
+                    tap_requests_reset_base = tap_requests_total,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = 1
                 """
             )

@@ -141,6 +141,11 @@ def test_admin_reset_clears_team_and_all_player_scores(tmp_path, monkeypatch):
     assert client.get("/api/stats?player_id=reset-player-a").json()["personal_taps"] == 0
     assert client.get("/api/stats?player_id=reset-player-b").json()["personal_taps"] == 0
     assert client.get("/api/metrics").json()["tap_requests_total"] == 2
+    after = client.get("/api/admin/status").json()
+    assert after["tap_requests_total"] == 2
+    assert after["tap_requests_since_reset"] == 0
+    client.post("/api/tap", json={"tap_id": "reset-tap-c", "player_id": "reset-player-a"})
+    assert client.get("/api/admin/status").json()["tap_requests_since_reset"] == 1
     logs = client.get("/api/admin/audit-logs?limit=1").json()
     assert logs[0]["action"] == "reset"
     assert logs[0]["success"] is True
@@ -177,6 +182,7 @@ def test_database_migration_preserves_existing_state_and_metrics(tmp_path, monke
             "SELECT total_taps, round_taps, round_status, tap_requests_total FROM game_state WHERE id = 1"
         ).fetchone()
         assert row == (12, 4, "paused", 99)
+        assert connection.execute("SELECT tap_requests_reset_base FROM game_state WHERE id = 1").fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM admin_audit_logs").fetchone()[0] == 0
 
 
