@@ -5,14 +5,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .database import connect, initialize_database, transaction
+from .database import connect, initialize_database, insert_audit_log, transaction
 from .models import (
     AdminStatusResponse,
+    AdminAuditLogResponse,
     ConfigResponse,
     MetricsResponse,
     RoundActionRequest,
@@ -33,7 +34,30 @@ INDEX_FILE = Path(__file__).parent / "templates" / "index.html"
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    initialize_database(settings.database_path, settings.round_name, settings.round_status)
+    state_created = initialize_database(
+        settings.database_path, settings.round_name, settings.round_status
+    )
+    with transaction(settings.database_path) as connection:
+        state = connection.execute(
+            "SELECT round_status FROM game_state WHERE id = 1"
+        ).fetchone()
+        insert_audit_log(
+            connection,
+            team_id=settings.team_id,
+            action="startup",
+            previous_status=state["round_status"],
+            new_status=state["round_status"],
+            source="system_startup",
+            source_ip=None,
+            success=True,
+            error_message=(
+                "Initialized round state from settings"
+                if state_created
+                else "Persisted round status; no startup override applied"
+            ),
+            git_commit=git_commit(),
+            state_initialized=state_created,
+        )
     logger.info("Woodfish server started: team=%s database=%s", settings.team_id, settings.database_path)
     yield
 
@@ -149,6 +173,27 @@ async def admin_status(request: Request) -> AdminStatusResponse:
     )
 
 
+@app.get("/api/admin/audit-logs", response_model=list[AdminAuditLogResponse])
+async def admin_audit_logs(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[AdminAuditLogResponse]:
+    require_admin_proxy(request)
+    with connect(settings.database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, timestamp, team_id, action, previous_status, new_status,
+                   source, source_ip, success, error_message, git_commit,
+                   state_initialized
+            FROM admin_audit_logs
+            ORDER BY timestamp DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [AdminAuditLogResponse(**dict(row)) for row in rows]
+
+
 @app.post("/api/admin/round/{action}", response_model=AdminStatusResponse)
 async def admin_round_action(
     action: str,
@@ -158,8 +203,35 @@ async def admin_round_action(
     require_admin_proxy(request)
     if action not in {"start", "pause", "resume", "end", "reset"}:
         raise HTTPException(status_code=404, detail="Unknown round action")
-    with connect(settings.database_path) as connection:
-        if action == "start":
+    source_ip = request.client.host if request.client else None
+    rejected_error = None
+    with transaction(settings.database_path) as connection:
+        state = connection.execute(
+            "SELECT round_status FROM game_state WHERE id = 1"
+        ).fetchone()
+        previous_status = state["round_status"]
+        transitions = {
+            "pause": ("active", "paused"),
+            "resume": ("paused", "active"),
+            "end": (("active", "paused"), "ended"),
+        }
+        if action in transitions:
+            allowed, new_status = transitions[action]
+            allowed_statuses = (allowed,) if isinstance(allowed, str) else allowed
+            if previous_status not in allowed_statuses:
+                rejected_error = f"Cannot {action} while round is {previous_status}"
+                insert_audit_log(
+                    connection,
+                    team_id=settings.team_id,
+                    action=action,
+                    previous_status=previous_status,
+                    new_status=previous_status,
+                    source="admin_api",
+                    source_ip=source_ip,
+                    success=False,
+                    error_message=rejected_error,
+                )
+        if rejected_error is None and action == "start":
             connection.execute(
                 """
                 UPDATE game_state
@@ -171,19 +243,19 @@ async def admin_round_action(
                 """,
                 (payload.name if payload else None,),
             )
-        elif action == "pause":
+        elif rejected_error is None and action == "pause":
             connection.execute(
                 "UPDATE game_state SET round_status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = 1"
             )
-        elif action == "resume":
+        elif rejected_error is None and action == "resume":
             connection.execute(
                 "UPDATE game_state SET round_status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = 1"
             )
-        elif action == "end":
+        elif rejected_error is None and action == "end":
             connection.execute(
                 "UPDATE game_state SET round_status = 'ended', updated_at = CURRENT_TIMESTAMP WHERE id = 1"
             )
-        else:
+        elif rejected_error is None:
             connection.execute(
                 """
                 UPDATE game_state
@@ -193,7 +265,22 @@ async def admin_round_action(
             )
             connection.execute("DELETE FROM player_totals")
             connection.execute("DELETE FROM processed_taps")
-        connection.commit()
+        if rejected_error is None:
+            updated = connection.execute(
+                "SELECT round_status FROM game_state WHERE id = 1"
+            ).fetchone()
+            insert_audit_log(
+                connection,
+                team_id=settings.team_id,
+                action=action,
+                previous_status=previous_status,
+                new_status=updated["round_status"],
+                source="admin_api",
+                source_ip=source_ip,
+                success=True,
+            )
+    if rejected_error is not None:
+        raise HTTPException(status_code=409, detail=rejected_error)
     return await admin_status(request)
 
 

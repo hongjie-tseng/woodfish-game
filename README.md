@@ -155,6 +155,28 @@ sudo -n /usr/bin/systemctl restart woodfish-admin.service
 
 若任何一台 SSH、Git、依賴安裝、重啟或 Health 驗證失敗，腳本會停止並回報失敗，不會宣稱整體部署成功。腳本不使用 `git reset --hard`、`git push --force`、資料庫重建或 `apt upgrade`。
 
+### 管理操作稽核
+
+A、B 遊戲伺服器各自將管理操作寫入 SQLite 的 `admin_audit_logs`。開始、暫停、繼續、結束、重設功德、服務啟動，以及內部 CLI 操作都會記錄操作前後狀態、來源、來源 IP、成功與錯誤原因；一般玩家敲擊不會寫入稽核表。日誌最多保留最近 10,000 筆，重設功德不會刪除日誌。
+
+遊戲伺服器可由 VM 1 讀取：
+
+```bash
+curl -sS 'http://127.0.0.1:8000/api/admin/audit-logs?limit=50'
+```
+
+集中管理頁面的「最近操作紀錄」會合併 A、B 最近 50 筆事件。若遊戲突然停止計數，先查看最後一筆事件的 `action`、`previous_status`、`new_status`、`source` 與 `error_message`，即可區分管理員操作、服務啟動與被拒絕的狀態變更。服務重啟只記錄當下保存的狀態，不會用 `.env` 的 `ROUND_STATUS` 覆寫 SQLite。
+
+新增稽核表是啟動時的保留式 schema migration，不會刪除或重建 `woodfish.db`。正式部署前先停止對應服務並備份資料庫及 WAL 檔案：
+
+```bash
+sudo systemctl stop woodfish
+cp data/woodfish.db data/woodfish.db.bak.$(date +%Y%m%d%H%M%S)
+sudo systemctl start woodfish
+```
+
+若需要還原，先停止服務，將備份檔複製回原路徑後再啟動；不要刪除或單獨移動 `.db-wal`、`.db-shm`，並確認檔案擁有者仍為服務帳號。
+
 兩台 VM 各自執行以下步驟，A 使用 `TEAM_ID=A`，B 使用 `TEAM_ID=B`；不要共用資料庫：
 
 ```bash
