@@ -10,13 +10,39 @@ const tapMetrics = [];
 const maxTapAttempts = 3;
 let audioWarningShown = false;
 const $ = (id) => document.getElementById(id);
+const personalKey = "woodfish-personal-taps";
+// Several server workers answer from slightly different snapshots and responses can arrive out of
+// order, so the phone counts its own taps and keeps the team total from moving backwards.
+// reset_marker only grows, and grows on every merit reset, which clears the local count.
+let personal = loadPersonal();
+let teamShown = 0;
+let roundStatus = null;
+
+function loadPersonal() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(personalKey));
+    if (saved && Number.isInteger(saved.count) && Number.isInteger(saved.marker)) return saved;
+  } catch {}
+  return { marker: null, count: 0 };
+}
+
+function savePersonal() {
+  try {
+    localStorage.setItem(personalKey, JSON.stringify(personal));
+  } catch {}
+}
+
+function showPersonal() {
+  $("personal-taps").textContent = personal.count;
+}
 
 function setConnection(text, status) {
   $("connection").textContent = text;
   $("connection").className = `connection connection--${status}`;
 }
 
-function setServerState(roundStatus) {
+function setServerState(status) {
+  roundStatus = status;
   if (roundStatus === "active") {
     setConnection("已連線", "ok");
   } else if (roundStatus === "paused") {
@@ -29,8 +55,15 @@ function setServerState(roundStatus) {
 }
 
 function render(stats) {
-  $("personal-taps").textContent = stats.personal_taps;
-  $("team-taps").textContent = stats.team_taps;
+  if (personal.marker === null || stats.reset_marker > personal.marker) {
+    // The first visit keeps the score the server already has; a later reset starts from zero.
+    personal = { marker: stats.reset_marker, count: personal.marker === null ? stats.personal_taps : 0 };
+    teamShown = 0;
+    savePersonal();
+  }
+  if (stats.reset_marker === personal.marker) teamShown = Math.max(teamShown, stats.team_taps);
+  showPersonal();
+  $("team-taps").textContent = teamShown;
 }
 
 async function load(url, options = {}) {
@@ -99,6 +132,11 @@ async function sendTap(item) {
     } else {
       tapAttempts.delete(item.tap_id);
       console.warn("Woodfish tap request failed after retries", item.tap_id);
+      if (item.countedMarker !== undefined && item.countedMarker === personal.marker && personal.count > 0) {
+        personal.count -= 1;
+        savePersonal();
+        showPersonal();
+      }
     }
   }
 }
@@ -195,6 +233,13 @@ $("tap-area").addEventListener("pointerdown", (event) => {
     animationAt,
     soundAt,
   };
+  if (roundStatus !== "paused" && roundStatus !== "ended") {
+    // Counted right away; taken back if the server finally rejects this tap.
+    personal.count += 1;
+    item.countedMarker = personal.marker;
+    savePersonal();
+    showPersonal();
+  }
   showMerit();
   sendTap(item);
 });

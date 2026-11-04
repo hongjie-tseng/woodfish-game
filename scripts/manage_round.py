@@ -39,7 +39,8 @@ def main() -> None:
         elif rejected_error is None and args.action == "end":
             connection.execute("UPDATE game_state SET round_status = 'ended', updated_at = CURRENT_TIMESTAMP WHERE id = 1")
         elif rejected_error is None:
-            connection.execute("UPDATE game_state SET total_taps = 0, round_taps = 0, updated_at = CURRENT_TIMESTAMP WHERE id = 1")
+            # Same as the admin reset: phones clear their own count when this marker grows.
+            connection.execute("UPDATE game_state SET total_taps = 0, round_taps = 0, tap_requests_reset_base = tap_requests_total, updated_at = CURRENT_TIMESTAMP WHERE id = 1")
             connection.execute("DELETE FROM player_totals")
             connection.execute("DELETE FROM processed_taps")
         if rejected_error is None:

@@ -346,3 +346,16 @@ def test_worker_processes_add_their_taps_without_overwriting(tmp_path, monkeypat
     assert first.snapshot("worker-player")["personal_taps"] == 1  # reloaded before second flushed
     first.flush()
     assert first.snapshot("worker-player")["personal_taps"] == 2
+
+
+def test_reset_marker_grows_on_every_reset(tmp_path, monkeypatch):
+    client, main = make_client(tmp_path, monkeypatch)
+    first = client.post("/api/tap", json={"tap_id": "marker-tap-1", "player_id": "marker-player"}).json()
+    assert first["reset_marker"] == 0
+    assert client.post("/api/admin/round/reset", json={}).status_code == 200
+    after_reset = client.get("/api/stats?player_id=marker-player").json()
+    assert after_reset["reset_marker"] > first["reset_marker"]
+    second = client.post("/api/tap", json={"tap_id": "marker-tap-2", "player_id": "marker-player"}).json()
+    assert second["reset_marker"] == after_reset["reset_marker"]
+    assert client.post("/api/admin/round/reset", json={}).status_code == 200
+    assert client.get("/api/stats?player_id=marker-player").json()["reset_marker"] > second["reset_marker"]

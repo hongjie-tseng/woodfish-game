@@ -15,6 +15,7 @@ class TapResponse(BaseModel):
     team_taps: int
     round_taps: int
     round_status: str
+    reset_marker: int
 
 
 class StatsResponse(BaseModel):
@@ -23,6 +24,7 @@ class StatsResponse(BaseModel):
     round_taps: int
     round_name: str
     round_status: str
+    reset_marker: int
     server_time: datetime
 
 

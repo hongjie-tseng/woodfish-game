@@ -353,6 +353,7 @@ async def get_stats(player_id: str) -> StatsResponse:
     state = get_store().snapshot(player_id)
     return StatsResponse(
         server_time=datetime.now(timezone.utc),
+        reset_marker=state["tap_requests_reset_base"],
         **{key: state[key] for key in ("personal_taps", "team_taps", "round_taps", "round_name", "round_status")},
     )
 
@@ -363,6 +364,6 @@ async def tap(payload: TapRequest) -> TapResponse:
         duplicate, state = get_store().tap(payload.tap_id, payload.player_id)
     except RoundNotActive:
         raise HTTPException(status_code=409, detail="本回合目前未進行") from None
-    return TapResponse(accepted=True, duplicate=duplicate, **{
+    return TapResponse(accepted=True, duplicate=duplicate, reset_marker=state["tap_requests_reset_base"], **{
         key: state[key] for key in ("personal_taps", "team_taps", "round_taps", "round_status")
     })
