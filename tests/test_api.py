@@ -222,3 +222,24 @@ def test_requests_do_not_leak_database_connections(tmp_path, monkeypatch):
         gc.enable()
     if before is not None:
         assert after - before < 10
+
+
+def test_admin_status_reports_tap_requests(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    client.post("/api/tap", json={"tap_id": "tap-unique-9", "player_id": "player-unique-9"})
+    client.post("/api/tap", json={"tap_id": "tap-unique-9", "player_id": "player-unique-9"})
+    status = client.get("/api/admin/status").json()
+    assert status["team_taps"] == 1
+    assert status["tap_requests_total"] == 2
+
+
+def test_admin_rates_use_recent_window(monkeypatch):
+    from app import admin_main
+    monkeypatch.setattr(admin_main, "SAMPLES", admin_main.defaultdict(lambda: admin_main.deque(maxlen=200)))
+    for second in range(11):
+        admin_main.SAMPLES["A"].append((float(second), second * 2, second * 3))
+    assert admin_main.rate_for("A", 10.0) == 120.0
+    assert admin_main.rate_for("A", 10.0, window=5, scale=1) == 2.0
+    assert admin_main.rate_for("A", 10.0, window=5, field=2, scale=1) == 3.0
+    admin_main.SAMPLES["B"].append((0.0, 0, 0))
+    assert admin_main.rate_for("B", 0.0, window=5, scale=1) is None

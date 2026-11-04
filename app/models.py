@@ -56,6 +56,7 @@ class AdminStatusResponse(BaseModel):
     round_status: str
     team_taps: int
     round_taps: int
+    tap_requests_total: int
     version: str
     commit: str
     server_time: datetime

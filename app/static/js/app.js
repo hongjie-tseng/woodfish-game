@@ -106,6 +106,8 @@ async function sendTap(item) {
 function prepareAudio() {
   if (audioContext) return true;
   try {
+    // iOS 17+: use the media channel so the ringer switch and ringer volume no longer mute Web Audio.
+    if (navigator.audioSession) navigator.audioSession.type = "playback";
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) throw new Error("Web Audio API is unavailable");
     audioContext = new AudioContextClass();
@@ -136,11 +138,21 @@ function prepareAudio() {
   }
 }
 
+function resumeAudio() {
+  if (!prepareAudio()) return;
+  // iOS reports "interrupted" after locking the screen, switching apps or notifications, not only "suspended".
+  if (audioContext.state === "running") return;
+  audioContext.resume().catch(() => {
+    if (audioContext && audioContext.state !== "running") audioContext.close().catch(() => {});
+    audioContext = null;
+  });
+}
+
 function playWoodfishSound() {
   if (!prepareAudio()) return null;
   try {
-    if (!woodfishBuffer) return null;
-    if (audioContext.state === "suspended") void audioContext.resume();
+    resumeAudio();
+    if (!woodfishBuffer || !audioContext) return null;
     const source = audioContext.createBufferSource();
     const gain = audioContext.createGain();
     source.buffer = woodfishBuffer;
@@ -190,3 +202,10 @@ refresh();
 loadVersion();
 setInterval(refresh, 2000);
 prepareAudio();
+// iOS only unlocks audio on some gesture events, so retry on every one of them.
+for (const type of ["touchend", "pointerup", "click", "keydown"]) {
+  document.addEventListener(type, resumeAudio, { passive: true });
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") resumeAudio();
+});

@@ -40,24 +40,27 @@ UPSTREAMS = {
     "A": admin_settings.game_server_a_url.rstrip("/"),
     "B": admin_settings.game_server_b_url.rstrip("/"),
 }
-SAMPLES: dict[str, deque[tuple[float, int]]] = defaultdict(lambda: deque(maxlen=40))
+# (monotonic time, team taps, tap requests); the console polls about once per second.
+SAMPLES: dict[str, deque[tuple[float, int, int]]] = defaultdict(lambda: deque(maxlen=200))
 INDEX_FILE = Path(__file__).parent / "templates" / "admin.html"
 app = FastAPI(title="Woodfish centralized administration")
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
-def rate_for(target: str, now: float) -> float | None:
+def rate_for(target: str, now: float, window: float = 60, field: int = 1, scale: float = 60) -> float | None:
     samples = SAMPLES[target]
     if len(samples) < 2:
         return None
-    cutoff = now - 60
-    while len(samples) > 2 and samples[0][0] < cutoff:
+    while len(samples) > 2 and samples[0][0] < now - 60:
         samples.popleft()
-    elapsed = samples[-1][0] - samples[0][0]
-    delta = samples[-1][1] - samples[0][1]
+    first = next((sample for sample in samples if sample[0] >= now - window), samples[0])
+    if first is samples[-1]:
+        first = samples[-2]
+    elapsed = samples[-1][0] - first[0]
+    delta = samples[-1][field] - first[field]
     if elapsed <= 0 or delta < 0:
         return 0.0
-    return round(delta * 60 / elapsed, 1)
+    return round(delta * scale / elapsed, 1)
 
 
 async def fetch_status(client: httpx.AsyncClient, target: str) -> dict:
@@ -66,10 +69,12 @@ async def fetch_status(client: httpx.AsyncClient, target: str) -> dict:
         response = await client.get(f"{UPSTREAMS[target]}/api/admin/status")
         response.raise_for_status()
         data = response.json()
-        SAMPLES[target].append((now, int(data["team_taps"])))
+        SAMPLES[target].append((now, int(data["team_taps"]), int(data.get("tap_requests_total", 0))))
         data["target"] = target
         data["online"] = True
         data["recent_rate_per_minute"] = rate_for(target, now)
+        data["taps_per_second"] = rate_for(target, now, window=5, scale=1)
+        data["requests_per_second"] = rate_for(target, now, window=5, field=2, scale=1)
         return data
     except (httpx.HTTPError, ValueError, KeyError) as error:
         return {
@@ -77,6 +82,8 @@ async def fetch_status(client: httpx.AsyncClient, target: str) -> dict:
             "online": False,
             "detail": str(error),
             "recent_rate_per_minute": None,
+            "taps_per_second": None,
+            "requests_per_second": None,
         }
 
 

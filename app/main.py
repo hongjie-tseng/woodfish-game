@@ -3,6 +3,7 @@ import subprocess
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -86,7 +87,9 @@ def project_version() -> str:
     return version or "unknown"
 
 
+@lru_cache(maxsize=1)
 def git_commit() -> str:
+    # Deployments restart the service, so the commit is fixed for the life of the process.
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -167,6 +170,7 @@ async def admin_status(request: Request) -> AdminStatusResponse:
         round_status=state["round_status"],
         team_taps=state["total_taps"],
         round_taps=state["round_taps"],
+        tap_requests_total=state["tap_requests_total"],
         version=project_version(),
         commit=git_commit(),
         server_time=datetime.now(timezone.utc),

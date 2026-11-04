@@ -18,23 +18,65 @@ function escapeHtml(value) {
   }[character]));
 }
 
+function rateText(value, unit) {
+  return value == null ? "待測量" : `${value}${unit}`;
+}
+
+function teamFields(team) {
+  return {
+    state: `${team.round_name} · ${team.round_status}`,
+    team_taps: team.team_taps,
+    round_taps: team.round_taps,
+    recent_rate_per_minute: rateText(team.recent_rate_per_minute, "/分"),
+    taps_per_second: rateText(team.taps_per_second, "/秒"),
+    requests_per_second: rateText(team.requests_per_second, "/秒"),
+    tap_requests_total: team.tap_requests_total,
+    meta: `版本 v${team.version} · ${team.commit}`,
+  };
+}
+
 function teamCard(team) {
   const online = team.online;
-  return `<article class="team-card">
+  const fields = online ? teamFields(team) : {};
+  const field = (name) => `<span data-field="${name}">${escapeHtml(fields[name])}</span>`;
+  return `<article class="team-card" data-team="${team.target}" data-online="${online}">
     <div class="team-card__head">
       <h2>${escapeHtml(team.team_name || `${team.target} 隊`)}</h2>
       <span class="status ${online ? "status--ok" : "status--error"}">${online ? "已連線" : "連線失敗"}</span>
     </div>
-    ${online ? `<div class="team-card__state">${escapeHtml(team.round_name)} · ${escapeHtml(team.round_status)}</div>
+    ${online ? `<div class="team-card__state">${field("state")}</div>
       <div class="metrics">
-        <div class="metric"><small>全隊功德</small><strong>${team.team_taps}</strong></div>
-        <div class="metric"><small>本回合</small><strong>${team.round_taps}</strong></div>
-        <div class="metric"><small>近 60 秒</small><strong>${team.recent_rate_per_minute == null ? "待測量" : `${team.recent_rate_per_minute}/分`}</strong></div>
+        <div class="metric"><small>全隊功德</small><strong>${field("team_taps")}</strong></div>
+        <div class="metric"><small>本回合</small><strong>${field("round_taps")}</strong></div>
+        <div class="metric"><small>近 60 秒</small><strong>${field("recent_rate_per_minute")}</strong></div>
+        <div class="metric"><small>點擊（近 5 秒）</small><strong>${field("taps_per_second")}</strong></div>
+        <div class="metric"><small>請求（近 5 秒）</small><strong>${field("requests_per_second")}</strong></div>
+        <div class="metric"><small>累計請求</small><strong>${field("tap_requests_total")}</strong></div>
       </div>
-      <div class="meta">版本 v${escapeHtml(team.version)} · ${escapeHtml(team.commit)}</div>` :
+      <div class="meta">${field("meta")}</div>` :
       `<div class="meta">${escapeHtml(team.detail || "無法取得伺服器狀態")}</div>`}
     <div class="actions" data-target="${team.target}">${actionButtons(team.target)}</div>
   </article>`;
+}
+
+function renderTeams(teams) {
+  const container = document.querySelector("#teams");
+  const cards = [...container.querySelectorAll(".team-card")];
+  const sameLayout = cards.length === teams.length && teams.every((team, index) =>
+    cards[index].dataset.team === team.target && cards[index].dataset.online === String(team.online)
+  );
+  if (!sameLayout) {
+    container.innerHTML = teams.map(teamCard).join("");
+    return;
+  }
+  // Update numbers in place so buttons are not replaced while they are being pressed.
+  teams.forEach((team, index) => {
+    if (!team.online) return;
+    for (const [name, value] of Object.entries(teamFields(team))) {
+      const element = cards[index].querySelector(`[data-field="${name}"]`);
+      if (element && element.textContent !== String(value)) element.textContent = value;
+    }
+  });
 }
 
 function auditRow(entry) {
@@ -69,7 +111,7 @@ async function refresh() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const online = data.teams.filter((team) => team.online).length;
-    document.querySelector("#teams").innerHTML = data.teams.map(teamCard).join("");
+    renderTeams(data.teams);
     status.textContent = online === 2 ? "A、B 已連線" : online === 1 ? "部分連線" : "兩隊皆離線";
     status.className = `status ${online === 2 ? "status--ok" : "status--error"}`;
   } catch (error) {
@@ -100,7 +142,19 @@ document.addEventListener("click", (event) => {
   control(button.dataset.target, button.dataset.action).catch((error) => window.alert(`操作失敗：${error.message}`));
 });
 
+let refreshing = false;
+async function refreshLive() {
+  // Skip a tick instead of piling up requests when a game server is slow.
+  if (refreshing || document.hidden) return;
+  refreshing = true;
+  try {
+    await refresh();
+  } finally {
+    refreshing = false;
+  }
+}
+
 refresh();
 refreshAuditLogs();
-setInterval(refresh, 5000);
+setInterval(refreshLive, 1000);
 setInterval(refreshAuditLogs, 5000);
