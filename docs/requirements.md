@@ -33,26 +33,31 @@
 - Vanilla JavaScript、HTML、CSS 的手機敲木魚遊戲。
 - A、B 隊各自使用獨立 SQLite 計數。
 - 每次敲擊發送一個真實 `POST /api/tap`，使用唯一 `tap_id`。
-- 個人功德、全隊功德與連線狀態。
-- 木魚受擊壓縮/回彈動畫與功德浮動文字。
-- 本地 WAV 木魚音效，透過 HTML media 播放；音效開關目前暫時隱藏，待手機媒體音量與相容性驗證完成後恢復。
+- 個人功德、全隊功德與連線狀態。我的功德由手機計算並存在 localStorage，伺服器最終拒絕的敲擊會扣回；全隊功德來自伺服器，同一次重設內只增不減；回應中的 `reset_marker` 變大時手機歸零。
+- 和尚揮槌動畫：大和尚手臂揮下、小和尚與木魚受擊壓縮回彈、敲擊線閃動，約 40 ms 內敲中以配合音效；支援減少動態效果設定。圖層由 `scripts/build_monk_layers.py` 產生。
+- 功德浮動文字。
+- Web Audio 播放本地 WAV 木魚音效；iOS 17 以上使用 `navigator.audioSession.type = "playback"` 走媒體音量，鎖螢幕或切換 App 後下次觸控自動恢復。
+- 音色選單（暫時）：小／中／大木魚與原本音效，供測試者選出最終音效後移除。音效由 `scripts/make_woodfish_sound.py` 合成。
 - FastAPI、SQLite、回合 CLI 管理及基本自動化測試。
 - 相對 API 路徑，適合 Cloudflare Tunnel 部署。
-- Zabbix/ntopng 流量監控實驗用途的部署文件與負載測試工具。
+- Zabbix/ntopng 流量監控實驗用途的部署文件、負載測試與逐級加壓測試工具（`scripts/stress_test.py`）。
 - 每台 Game Server 提供唯讀 `GET /api/metrics`，以 `tap_requests_total` 統計實際收到的 `POST /api/tap` 請求，包含成功、失敗、重複與格式驗證失敗。
+- 高流量架構：敲擊在記憶體累計、每 0.5 秒批次寫入 SQLite，A、B 各 3 個 Uvicorn worker；2026-11-04 內網實測每台每秒 2000 次通過（p95 約 30 ms）。
+- 兩台 VM 的 SSH 自動部署（`scripts/deploy.ps1`），部署後 `/api/version` 與前端資源版本已確認一致。
 
 ### 待驗證
 
-- iPhone Safari/Chrome 實機媒體音效播放，尤其首次觸控、媒體音量與靜音狀態。
-- 兩台 Ubuntu VM 重新部署後的 `/api/version` SHA 是否一致。
-- Cloudflare Tunnel 下手機重新整理是否取得最新 HTML、CSS、JavaScript。
+- iPhone Safari/Chrome 實機：靜音開關開啟時是否走媒體音量發聲、鎖螢幕後是否恢復（需要 iOS 17 以上）。
+- 測試者選出最終木魚音效。
 - Zabbix 與 ntopng 實際可觀察到的流量、協定與封包限制。
 - Zabbix HTTP agent 以 JSONPath `$.tap_requests_total` 讀取計數器，並以 Change per second 顯示 Requests/s。
+- 經 Cloudflare 時 VM 1 cloudflared 的實際上限（估計兩台合計每秒 2500–3500 次；需由 VM 以外的電腦送出請求才能準確量測）。
 
-### 尚未完成
+### 已知限制
 
-- 乾淨手臂/手掌/槌子分層素材不足，因此尚未實作安全的和尚揮槌動畫。
-- 尚未完成兩台 VM 的每次部署自動化與正式效能驗證。
+- 斷電或程式當機最多遺失最後 0.5 秒的敲擊；正常重啟或部署不會遺失。這是課堂展示接受的取捨。
+- 我的功德存在每支手機上，換手機、換瀏覽器或清除網站資料會重新計算。
+- 敲擊動畫中，前臂與下方衣褶交界在敲中瞬間有小缺口；木魚周圍淡灰色與小和尚額頭白線是原始素材本來就有的瑕疵，不處理。
 
 ## 部署驗收
 
@@ -79,7 +84,8 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 - A、B 各自提供 `GET /api/metrics`，資料來自各自 SQLite，不需要同步。
 - JSON 至少包含 `team_id`、`tap_requests_total` 與 `server_time`。
 - `tap_requests_total` 是實際進入應用程式的 `POST /api/tap` 請求總數，包含成功、失敗、重複與 Pydantic 請求格式驗證失敗；不可用功德數代替。
-- 計數器使用 SQLite 持久化交易更新，可處理並行請求；服務重啟後保留，刪除/重建資料庫才歸零。
+- 計數器先在各 worker 記憶體累計，每 0.5 秒以 SQLite 交易批次寫入；`/api/metrics` 讀 SQLite，因此最多延遲 0.5 秒，但在多個 worker 下仍保證只增不減。服務重啟後保留，刪除/重建資料庫才歸零。
+- 每個請求的 Uvicorn 存取紀錄關閉，以免高流量時日誌耗用的 CPU 超過遊戲本身。
 - Zabbix 7.0 LTS 使用 HTTP agent 讀取 `/api/metrics`，JSONPath `$.tap_requests_total`，再使用 Change per second 計算 Requests/s。
 - 這是 HTTP 應用層請求數，不是 TCP 封包數、封包速率或網路流量 Bytes；ntopng/Zabbix 網路流量圖表需分開解讀。
 - 管理頁面的功德重設不得清除 `tap_requests_total`。
@@ -89,12 +95,12 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 - Ubuntu-Monitor（VM 1，`192.168.26.131`）提供唯一的集中管理頁面，管理服務使用 Port `8010`。
 - Game-Server-A/B 維持 Port `8000` 與各自獨立的 SQLite；不新增 VM、Docker、Redis 或額外資料庫。
 - 瀏覽器只能呼叫 VM 1 管理服務；VM 1 後端透過內部網路轉送至 A/B，瀏覽器不得直接呼叫 Game Server 管理 API。
-- 管理頁面必須顯示 A/B 真實狀態、全隊功德、回合功德、近期敲擊速率、連線狀態與各自 Commit。
+- 管理頁面每秒更新，必須顯示 A/B 真實狀態、全隊功德、回合功德、近期敲擊速率、近 5 秒每秒點擊與每秒請求、累計請求（重設後，以 `tap_requests_total - tap_requests_reset_base` 計算）、連線狀態與各自 Commit；只更新數字，不在按鈕操作時重畫按鈕。
 - 每隊及共同操作都必須支援開始、暫停、繼續、結束與重設功德；重設必須確認。
 - 管理頁的重設功德必須在目標伺服器交易中清除全隊功德、回合功德、所有玩家個人功德與已處理敲擊識別碼，讓所有玩家下一次取得統計時看到 0。
 - 共同操作必須分別確認兩台伺服器結果；只有一隊成功時顯示部分成功，不得假裝全部完成。
 - 管理 API 不使用帳號密碼登入是已知且接受的課堂實驗風險；Game Server 管理 API 僅接受 VM 1 的 `ADMIN_PROXY_IP` 來源。
-- 管理服務不得占用或修改 Zabbix、ntopng（Port 3001）及 Cloudflare Tunnel；目前不自行新增 Cloudflare 公開 route。
+- 管理服務不得占用或修改 Zabbix、ntopng（Port 3001）及 Cloudflare Tunnel；管理頁面只在內網使用，因為沒有登入驗證，不得建立公開的 Cloudflare route。
 - VM 1 管理服務使用 `systemd/woodfish-admin.service.example`，獨立於既有 `woodfish.service`。
 - 近期敲擊速率由 VM 1 對真實伺服器回報的計數樣本計算，存於管理服務記憶體；服務重啟後先顯示待建立樣本，不使用模擬值。
 
@@ -120,4 +126,5 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 - 部署只允許 `git pull --ff-only origin main`、更新既有 venv requirements、重啟對應既有 systemd，並逐台驗證 Commit、服務 active、Health 與 A/B `TEAM_ID`。
 - 不得修改 `.env`、`.env.admin`、SQLite、Cloudflare、Zabbix、ntopng；不得使用 `git reset --hard`、`git push --force` 或 `apt upgrade`。
 - 遠端有未提交修改、SSH/Git/依賴/重啟/Health 失敗時必須停止並明確報告。
+- A、B 的 `woodfish.service` 以 systemd drop-in `/etc/systemd/system/woodfish.service.d/workers.conf` 執行 3 個 Uvicorn worker，不修改原本的服務檔；每次重啟會有 3 筆 `system_startup` 稽核紀錄。
 - 三台 VM 必須只對指定服務設定 NOPASSWD：A/B 使用 `woodfish.service`，Monitor 使用 `woodfish-admin.service`。部署腳本所有 SSH 使用 `BatchMode=yes`，部署前以 `sudo -n /usr/bin/systemctl show <service> --property=LoadState --value` 唯讀驗證權限，重啟只允許 `sudo -n /usr/bin/systemctl restart <service>`。不得使用 `sudo -S`、標準輸入傳密碼或互動式 SSH。

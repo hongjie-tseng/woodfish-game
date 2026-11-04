@@ -7,3 +7,5 @@ __pycache__/
 data/*.db
 data/*.db-*
 *.log
+.env.admin
+stress_test_report.json

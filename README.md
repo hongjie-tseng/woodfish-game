@@ -16,7 +16,12 @@ python -m uvicorn app.main:app --reload
 
 頁面右下角會顯示 `VERSION` 與執行中 Git Commit 短 SHA。`GET /api/version` 也會回傳相同資訊；Git 資訊無法取得時會顯示 `unknown`，不會使用假 SHA。
 
-玩家敲擊音效目前使用專案內的 `app/static/assets/woodfish-hit.wav`，透過點擊事件內的 HTML media `play()` 播放，不使用通知 API 或 Web Audio oscillator。音效開關暫時隱藏，待手機媒體音量與相容性驗證完成後再恢復。
+### 遊戲畫面
+
+- **敲擊動畫**：每次敲擊，大和尚的手臂會揮下木槌敲中木魚，小和尚與木魚被壓一下再彈回，黃色敲擊線閃動。敲中的畫面在約 40 ms 內出現，與音效同步。圖層由 `scripts/build_monk_layers.py` 從 `character-body-no-fish.png` 切出（`monk-big.png`、`monk-arm.png`、`monk-small.png`、`impact-marks.png`）；需要 Pillow 與 numpy，只在素材改變時執行。手機開啟「減少動態效果」時不播放動畫。
+- **音效**：使用 Web Audio 預先解碼的 WAV，延遲低。iOS 17 以上設定 `navigator.audioSession.type = "playback"`，改走媒體音量，不受靜音開關影響；鎖螢幕或切換 App 後，下一次觸控會自動恢復。左上角的「音色」選單可切換小／中／大木魚與原本的音效（預設中木魚），選擇存在手機上；這是試聽用的暫時功能，選定後會移除。木魚音效由 `scripts/make_woodfish_sound.py` 合成。
+- **我的功德**：由手機自己計算並存在 localStorage，敲擊時立即 +1，伺服器最終拒絕（例如回合暫停中）時扣回。換手機、換瀏覽器或清除網站資料會重新計算，不影響伺服器的全隊功德與請求數。
+- **全隊功德**：來自伺服器；同一次重設內只會往上，避免不同 worker 的時間差讓數字倒退。API 回應中的 `reset_marker` 每次重設都會變大，手機看到變大時把我的功德與全隊功德歸零。
 
 ### Zabbix HTTP 敲擊請求監控
 
@@ -40,7 +45,19 @@ Zabbix 7.0 LTS 可在 A、B 主機各建立 HTTP agent item：
 
 若由 VM 1 監控，URL 改為 `http://192.168.26.133:8000/api/metrics` 與 `http://192.168.26.135:8000/api/metrics`。請確保 Ubuntu 防火牆只允許監控來源；此 API 只讀、不改變玩家 API。
 
-計數器儲存在各自 SQLite 的 `game_state.tap_requests_total`，並以 SQLite 交易更新，可處理並行請求。服務重啟不會歸零；只有刪除/重建資料庫才會歸零。管理頁面的「重設功德」不會重設此 HTTP 請求計數器，以免 Zabbix 的 Change per second 出現負值；重設時會把當下的值記在 `tap_requests_reset_base`，集中管理頁面的「累計請求（重設後）」顯示兩者的差，因此會從 0 重新計算。
+計數器儲存在各自 SQLite 的 `game_state.tap_requests_total`。服務重啟不會歸零；只有刪除/重建資料庫才會歸零。管理頁面的「重設功德」不會重設此 HTTP 請求計數器，以免 Zabbix 的 Change per second 出現負值；重設時會把當下的值記在 `tap_requests_reset_base`，集中管理頁面的「累計請求（重設後）」顯示兩者的差，因此會從 0 重新計算。
+
+### 高流量架構
+
+為了讓每台伺服器撐住每秒 2000 次敲擊，敲擊只更新記憶體（`app/store.py`），背景每 0.5 秒把這段時間的敲擊用一次交易寫入 SQLite：
+
+- `/api/metrics` 與管理狀態直接讀 SQLite，因此 Zabbix 看到的數字**最多晚 0.5 秒**，但保證只增不減（多個 worker 時也一樣）。
+- 正常重啟或部署會先寫入剩下的敲擊；**斷電或當機最多遺失最後 0.5 秒**，這是課堂展示接受的取捨。寫入失敗時，敲擊會留到下一次再寫。
+- 暫停、結束、重設會先寫入記憶體中的敲擊再執行；`scripts/manage_round.py` 直接修改 SQLite 的結果，0.5 秒內會被各 worker 讀到。
+- 重複的 `tap_id` 先在記憶體檢查，寫入時再由 `processed_taps` 檢查；`processed_taps` 只保留最近 120 秒，避免資料庫在高流量下一直變大。
+- 每個請求的 Uvicorn 存取紀錄已關閉（每秒數千行日誌比敲擊本身更耗 CPU）；錯誤、啟動訊息與管理操作稽核照常記錄。
+
+A、B 以 3 個 Uvicorn worker 執行（見「Ubuntu 部署」的 worker 設定）。2026-11-04 由 VM 1 經內網實測：每台每秒 2000 次成功率 99.5–100%、p95 約 30 ms、整台 CPU（4 vCPU）約 55%。經 Cloudflare 時瓶頸在 VM 1 的 cloudflared，估計兩台合計約每秒 2500–3500 次。
 
 ## 回合管理
 
@@ -53,13 +70,13 @@ python scripts/manage_round.py reset
 python scripts/manage_round.py end
 ```
 
-`reset` 只清除本回合計數，保留全隊與個人累積；`start` 會開始新回合並清除本回合計數。
+`reset` 與管理頁面的「重設功德」相同：清除全隊功德、回合功德、所有玩家個人功德與已處理的敲擊識別碼，並更新 `tap_requests_reset_base`，讓手機上的我的功德一起歸零；不清除 `tap_requests_total` 與稽核日誌。`start` 會開始新回合並只清除本回合計數。
 
 ## A/B 集中管理
 
 目前管理頁面由 Ubuntu-Monitor（VM 1，`192.168.26.131:8010`）提供。瀏覽器只連 VM 1，管理服務再透過內部網路呼叫 Game-Server-A（`192.168.26.133:8000`）與 Game-Server-B（`192.168.26.135:8000`）；瀏覽器不直接呼叫兩台遊戲伺服器的管理 API。
 
-管理頁面可顯示兩隊真實狀態、全隊功德、回合功德、近 60 秒敲擊速率、連線狀態與部署 Commit，並支援個別或同時開始、暫停、繼續、結束與重設功德。共同操作會分別回報 A/B 結果；只有一隊成功時會顯示部分成功。重設需要瀏覽器確認，且會清除該隊全隊功德、回合功德、所有玩家個人功德與已處理的敲擊識別碼，因此所有手機下一次輪詢都會看到 0。
+管理頁面每秒更新一次，顯示兩隊真實狀態、全隊功德、回合功德、近 60 秒敲擊速率、近 5 秒每秒點擊與每秒請求、累計請求（重設後）、連線狀態與部署 Commit，並支援個別或同時開始、暫停、繼續、結束與重設功德。分頁切到背景時暫停更新；每開一個分頁，每台遊戲伺服器約多一個每秒請求，不計入 `tap_requests_total`。共同操作會分別回報 A/B 結果；只有一隊成功時會顯示部分成功。重設需要瀏覽器確認，且會清除該隊全隊功德、回合功德、所有玩家個人功德與已處理的敲擊識別碼，因此所有手機下一次輪詢都會看到 0。
 
 Game Server 的管理 API 只接受 `ADMIN_PROXY_IP`（預設 `192.168.26.131`）來源，避免玩家端直接控制回合。這不是登入驗證；集中管理無帳號密碼是課堂實驗的已知風險。
 
@@ -77,7 +94,7 @@ sudo systemctl status woodfish-admin
 curl -sS http://127.0.0.1:8010/health
 ```
 
-管理頁面在未設定 Cloudflare Route 前可由內網使用：`http://192.168.26.131:8010/`。8010 不使用 Zabbix HTTP、ntopng 的 3001，也不改動現有 Tunnel。若要公開，建議另設 `admin-woodfish-a.netplaylab.codes` 指向 VM 1 的 `http://127.0.0.1:8010`，但必須由管理者自行修改 Cloudflare Tunnel route。
+管理頁面只在內網使用：`http://192.168.26.131:8010/`。8010 不使用 Zabbix HTTP、ntopng 的 3001，也不改動現有 Tunnel。**管理頁面沒有登入驗證，不要建立公開的 Cloudflare route**，否則任何人都能重設或結束回合；若日後確實需要外網存取，必須先加上 Cloudflare Access 等驗證。
 
 ### 管理服務更新與驗證
 
@@ -98,13 +115,23 @@ sudo journalctl -u woodfish-admin -n 50 --no-pager
 python -m pytest
 ```
 
-正式網址禁止直接壓測。只對本機或已獲授權的環境執行：
+壓力測試只能在已獲授權、沒有人在玩的時候執行；測試會真的增加功德與 `tap_requests_total`，結束後請在管理頁按「重設功德」。小量測試：
 
 ```bash
 python scripts/load_test.py --url http://127.0.0.1:8000 --requests 100 --concurrency 10
 ```
 
-工具會輸出成功率與延遲；每次有效敲擊都是一個獨立 POST，伺服器用 `tap_id` 去重。
+逐級加壓測試（固定每秒速率，找出撐不住的點，並換算網速）：
+
+```bash
+# 內網：從 VM 1 執行（Windows 筆電本身送不出每秒數千次）。腳本複製到 /tmp，用 VM 1 的 woodfish venv，測完刪除
+python stress_test.py --engine raw --target A=http://192.168.26.133:8000 --target B=http://192.168.26.135:8000 --rates 500,1000,1500,2000
+
+# 從 Windows 執行時可加 SSH 別名，同時讀取伺服器 CPU、RAM 與網卡流量
+python scripts\stress_test.py --target A=http://192.168.26.133:8000=woodfish-a --target B=http://192.168.26.135:8000=woodfish-b
+```
+
+`--engine raw` 是精簡的 HTTP/1.1 長連線用戶端（支援 http 與 https），比 httpx 送得快很多。每次有效敲擊都是一個獨立 POST，伺服器用 `tap_id` 去重。
 
 ## Ubuntu 部署
 
@@ -153,6 +180,8 @@ sudo -n /usr/bin/systemctl restart woodfish-admin.service
 
 若 NOPASSWD 權限不足，腳本會在部署前停止，不會等待密碼，也不會使用 `sudo -S` 或標準輸入傳送密碼。`-InteractiveSudo` 已不再支援。
 
+已知限制：Windows PowerShell 5.1 會把遠端的警告輸出當成錯誤。VM 1 的 `woodfish-admin.service` 設定檔曾修改過但尚未 `daemon-reload`，重啟時 systemd 會印出提醒，因此部署 Monitor 時腳本可能顯示失敗、但服務其實已成功重啟；請以 `.\scripts\check-servers.ps1 -Target Monitor` 確認。在 VM 1 執行一次 `sudo systemctl daemon-reload` 即可消除這個提醒。本機工作樹有未提交檔案時腳本會停止，請先提交或移開。
+
 若任何一台 SSH、Git、依賴安裝、重啟或 Health 驗證失敗，腳本會停止並回報失敗，不會宣稱整體部署成功。腳本不使用 `git reset --hard`、`git push --force`、資料庫重建或 `apt upgrade`。
 
 ### 管理操作稽核
@@ -199,6 +228,17 @@ sudo systemctl enable --now woodfish
 sudo systemctl status woodfish
 ```
 
+A、B 以 3 個 Uvicorn worker 執行，使用 systemd drop-in，不修改 `woodfish.service` 本身（需要 sudo，每台執行一次）：
+
+```bash
+sudo mkdir -p /etc/systemd/system/woodfish.service.d
+printf '[Service]\nExecStart=\nExecStart=/home/labuser/woodfish-game/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 3\n' | sudo tee /etc/systemd/system/woodfish.service.d/workers.conf
+sudo systemctl daemon-reload
+sudo systemctl restart woodfish.service
+```
+
+還原成單一程序：刪除 `workers.conf` 後執行 `sudo systemctl daemon-reload` 與 `sudo systemctl restart woodfish.service`。每次重啟時每個 worker 各寫一筆 `system_startup` 稽核紀錄，所以會看到 3 筆。
+
 更新：
 
 ```bash
@@ -222,7 +262,7 @@ curl -sS https://woodfish-b.netplaylab.codes/api/version
 
 `git rev-parse --short HEAD` 必須與本機 `/api/version` 的 `commit` 相同；兩台伺服器的 API 回應可用來確認部署是否一致。HTML 使用 no-store，CSS、JavaScript 與圖片 URL 使用部署版本作為 cache-busting token。
 
-服務固定監聽 `8000`，不使用 `8100`；Cloudflare 路由、Zabbix、ntopng 不需修改。SQLite 備份可在停止服務後複製 `.env` 指定的資料庫檔案，重設資料庫前請先備份。
+服務固定監聽 `8000`；同一台 VM 的 `8100` 是另一個遊戲 Traffic Tug，不可占用。Cloudflare 路由、Zabbix、ntopng 不需修改。SQLite 備份可在停止服務後複製 `.env` 指定的資料庫檔案，重設資料庫前請先備份。
 
 ## 監控解讀
 
