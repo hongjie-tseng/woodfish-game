@@ -14,9 +14,18 @@ body { min-height: 100dvh; overflow: hidden; }
 .scene-button::before { content: ""; position: absolute; inset: -25%; z-index: 0; }
 .scene-mount, .merit-layer { z-index: 1; }
 .scene-mount, .art-layer { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }.scene-mount { overflow: visible; }.art-layer { object-fit: contain; pointer-events: none; }
-#wooden-fish { transform-origin: 25% 52%; }
-.scene-button.is-hitting #wooden-fish { animation: fish-impact .38s cubic-bezier(.2,.8,.25,1); }
-@keyframes fish-impact { 0%, 28%, 100% { transform: translateY(0) scale(1) rotate(0); } 43% { transform: translateY(2%) scale(1.05, .95) rotate(-2deg); } 62% { transform: translateY(-.5%) scale(.99, 1.015) rotate(1deg); } 78% { transform: translateY(0) scale(1) rotate(0); } }
+/* Layers from scripts/build_monk_layers.py share one 755x670 canvas; origins are the pivots in that canvas.
+   The strike lands within ~40 ms of the tap so it matches the sound, then the arm rises slowly. */
+.small-monk { position: absolute; inset: 0; transform-origin: 23.8% 89.6%; }
+.monk-arm { transform-origin: 54.04% 37.01%; }
+.impact-marks { transform-origin: 13.9% 24.6%; }
+.scene-button.is-hitting .monk-arm { animation: monk-strike .32s cubic-bezier(.2,.8,.25,1); }
+.scene-button.is-hitting .small-monk { animation: monk-bonk .36s ease-out; }
+.scene-button.is-hitting .impact-marks { animation: marks-flash .32s ease-out; }
+@keyframes monk-strike { 0% { transform: rotate(0); } 12% { transform: rotate(-14deg); } 30% { transform: rotate(-12deg); } 100% { transform: rotate(0); } }
+@keyframes monk-bonk { 0%, 10% { transform: none; } 24% { transform: translateY(1%) scale(1.03, .95); } 48% { transform: translateY(-.3%) scale(.99, 1.02); } 72%, 100% { transform: none; } }
+@keyframes marks-flash { 0%, 10% { transform: none; opacity: .75; } 24% { transform: scale(1.25); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .scene-button.is-hitting .monk-arm, .scene-button.is-hitting .small-monk, .scene-button.is-hitting .impact-marks { animation: none; } }
 .merit-layer { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 .merit { position: absolute; top: 12%; color: #bd7748; font-size: 1.98rem; font-weight: 700; line-height: 1; white-space: nowrap; text-shadow: 0 1px 0 rgba(255, 250, 244, .55); animation: merit-float .62s ease-out forwards; }
 @keyframes merit-float { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, calc(var(--merit-rise, 55px) * -1)); } }
