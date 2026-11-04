@@ -359,3 +359,16 @@ def test_reset_marker_grows_on_every_reset(tmp_path, monkeypatch):
     assert second["reset_marker"] == after_reset["reset_marker"]
     assert client.post("/api/admin/round/reset", json={}).status_code == 200
     assert client.get("/api/stats?player_id=marker-player").json()["reset_marker"] > second["reset_marker"]
+
+
+def test_sound_choices_are_served_and_offered(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    index = client.get("/").text
+    script = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
+    for choice, filename in (("small", "woodfish-small.wav"), ("medium", "woodfish-medium.wav"),
+                             ("large", "woodfish-large.wav"), ("original", "woodfish-hit.wav")):
+        assert f'<option value="{choice}">' in index
+        assert filename in script.read_text(encoding="utf-8")
+        sound = client.get(f"/static/assets/{filename}")
+        assert sound.status_code == 200
+        assert sound.headers["content-type"].startswith("audio/wav")

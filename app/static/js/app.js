@@ -3,7 +3,17 @@ const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
 let audioContext;
 let woodfishBuffer;
-let woodfishBufferPromise;
+const soundKey = "woodfish-sound";
+// Temporary picker so testers can compare the synthesized woodfish sounds before one is chosen.
+const soundFiles = {
+  small: "woodfish-small.wav",
+  medium: "woodfish-medium.wav",
+  large: "woodfish-large.wav",
+  original: "woodfish-hit.wav",
+};
+const soundBuffers = new Map();
+let soundChoice = readSoundChoice();
+let previewChoice = null;
 let meritSequence = 0;
 const tapAttempts = new Map();
 const tapMetrics = [];
@@ -149,23 +159,7 @@ function prepareAudio() {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) throw new Error("Web Audio API is unavailable");
     audioContext = new AudioContextClass();
-    woodfishBufferPromise = fetch("/static/assets/woodfish-hit.wav")
-      .then((response) => {
-        if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .then((data) => audioContext.decodeAudioData(data))
-      .then((buffer) => {
-        woodfishBuffer = buffer;
-        return buffer;
-      })
-      .catch(() => {
-        if (!audioWarningShown) {
-          console.warn("Woodfish audio could not be decoded");
-          audioWarningShown = true;
-        }
-        return null;
-      });
+    loadSound(soundChoice);
     return true;
   } catch {
     if (!audioWarningShown) {
@@ -173,6 +167,61 @@ function prepareAudio() {
       audioWarningShown = true;
     }
     return false;
+  }
+}
+
+function readSoundChoice() {
+  try {
+    const saved = localStorage.getItem(soundKey);
+    if (saved && saved in soundFiles) return saved;
+  } catch {}
+  return "medium";
+}
+
+function loadSound(choice) {
+  if (soundBuffers.has(choice)) {
+    if (choice === soundChoice) woodfishBuffer = soundBuffers.get(choice);
+    return;
+  }
+  soundBuffers.set(choice, null);
+  fetch(`/static/assets/${soundFiles[choice]}`)
+    .then((response) => {
+      if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
+      return response.arrayBuffer();
+    })
+    .then((data) => audioContext.decodeAudioData(data))
+    .then((buffer) => {
+      soundBuffers.set(choice, buffer);
+      if (choice !== soundChoice) return;
+      woodfishBuffer = buffer;
+      if (previewChoice === choice) {
+        previewChoice = null;
+        playWoodfishSound();
+      }
+    })
+    .catch(() => {
+      soundBuffers.delete(choice);
+      if (!audioWarningShown) {
+        console.warn("Woodfish audio could not be decoded");
+        audioWarningShown = true;
+      }
+    });
+}
+
+function selectSound(choice) {
+  if (!(choice in soundFiles)) return;
+  soundChoice = choice;
+  try {
+    localStorage.setItem(soundKey, choice);
+  } catch {}
+  woodfishBuffer = soundBuffers.get(choice) || null;
+  if (!prepareAudio()) return;
+  resumeAudio();
+  if (woodfishBuffer) {
+    playWoodfishSound();
+  } else {
+    previewChoice = choice;
+    loadSound(choice);
   }
 }
 
@@ -247,6 +296,8 @@ refresh();
 loadVersion();
 setInterval(refresh, 2000);
 prepareAudio();
+$("sound-choice").value = soundChoice;
+$("sound-choice").addEventListener("change", (event) => selectSound(event.target.value));
 // iOS only unlocks audio on some gesture events, so retry on every one of them.
 for (const type of ["touchend", "pointerup", "click", "keydown"]) {
   document.addEventListener(type, resumeAudio, { passive: true });
