@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -67,14 +68,20 @@ app = FastAPI(title="電子敲木魚", version="1.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
+def increment_tap_requests() -> None:
+    with connect(settings.database_path) as connection:
+        connection.execute(
+            "UPDATE game_state SET tap_requests_total = tap_requests_total + 1 WHERE id = 1"
+        )
+        connection.commit()
+
+
+# SQLite calls block, so they run in the thread pool; database endpoints below are plain "def"
+# for the same reason, otherwise one slow write stalls every request on the event loop.
 @app.middleware("http")
 async def count_tap_requests(request: Request, call_next):
     if request.method == "POST" and request.url.path == "/api/tap":
-        with connect(settings.database_path) as connection:
-            connection.execute(
-                "UPDATE game_state SET tap_requests_total = tap_requests_total + 1 WHERE id = 1"
-            )
-            connection.commit()
+        await run_in_threadpool(increment_tap_requests)
     return await call_next(request)
 
 
@@ -145,7 +152,7 @@ async def get_version(response: Response) -> VersionResponse:
 
 
 @app.get("/api/metrics", response_model=MetricsResponse)
-async def get_metrics(response: Response) -> MetricsResponse:
+def get_metrics(response: Response) -> MetricsResponse:
     response.headers["Cache-Control"] = "no-store, max-age=0"
     with connect(settings.database_path) as connection:
         state = connection.execute(
@@ -159,7 +166,7 @@ async def get_metrics(response: Response) -> MetricsResponse:
 
 
 @app.get("/api/admin/status", response_model=AdminStatusResponse)
-async def admin_status(request: Request) -> AdminStatusResponse:
+def admin_status(request: Request) -> AdminStatusResponse:
     require_admin_proxy(request)
     with connect(settings.database_path) as connection:
         state = connection.execute("SELECT * FROM game_state WHERE id = 1").fetchone()
@@ -179,7 +186,7 @@ async def admin_status(request: Request) -> AdminStatusResponse:
 
 
 @app.get("/api/admin/audit-logs", response_model=list[AdminAuditLogResponse])
-async def admin_audit_logs(
+def admin_audit_logs(
     request: Request,
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[AdminAuditLogResponse]:
@@ -200,7 +207,7 @@ async def admin_audit_logs(
 
 
 @app.post("/api/admin/round/{action}", response_model=AdminStatusResponse)
-async def admin_round_action(
+def admin_round_action(
     action: str,
     request: Request,
     payload: RoundActionRequest | None = None,
@@ -289,11 +296,11 @@ async def admin_round_action(
             )
     if rejected_error is not None:
         raise HTTPException(status_code=409, detail=rejected_error)
-    return await admin_status(request)
+    return admin_status(request)
 
 
 @app.get("/health")
-async def health() -> dict:
+def health() -> dict:
     with connect(settings.database_path) as connection:
         connection.execute("SELECT 1").fetchone()
     return {
@@ -304,7 +311,7 @@ async def health() -> dict:
 
 
 @app.get("/api/config", response_model=ConfigResponse)
-async def get_config() -> ConfigResponse:
+def get_config() -> ConfigResponse:
     with connect(settings.database_path) as connection:
         state = connection.execute("SELECT round_name, round_status FROM game_state WHERE id = 1").fetchone()
     return ConfigResponse(
@@ -317,7 +324,7 @@ async def get_config() -> ConfigResponse:
 
 
 @app.get("/api/stats", response_model=StatsResponse)
-async def get_stats(player_id: str) -> StatsResponse:
+def get_stats(player_id: str) -> StatsResponse:
     if not player_id or len(player_id) > 100:
         raise HTTPException(status_code=422, detail="Invalid player_id")
     with connect(settings.database_path) as connection:
@@ -326,7 +333,7 @@ async def get_stats(player_id: str) -> StatsResponse:
 
 
 @app.post("/api/tap", response_model=TapResponse)
-async def tap(payload: TapRequest, request: Request) -> TapResponse:
+def tap(payload: TapRequest, request: Request) -> TapResponse:
     started = time.monotonic()
     try:
         with transaction(settings.database_path) as connection:
