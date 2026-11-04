@@ -1,9 +1,9 @@
 const playerKey = "woodfish-player-id";
 const playerId = localStorage.getItem(playerKey) || crypto.randomUUID();
 localStorage.setItem(playerKey, playerId);
-let audioContext;
-let woodfishBuffer;
-let woodfishBufferPromise;
+const woodfishAudioUrl = "/static/assets/woodfish-hit.wav";
+const woodfishAudioPool = [];
+let woodfishAudioIndex = 0;
 let meritSequence = 0;
 const tapAttempts = new Map();
 const tapMetrics = [];
@@ -104,28 +104,16 @@ async function sendTap(item) {
 }
 
 function prepareAudio() {
-  if (audioContext) return true;
+  if (woodfishAudioPool.length) return true;
   try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) throw new Error("Web Audio API is unavailable");
-    audioContext = new AudioContextClass();
-    woodfishBufferPromise = fetch("/static/assets/woodfish-hit.wav")
-      .then((response) => {
-        if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .then((data) => audioContext.decodeAudioData(data))
-      .then((buffer) => {
-        woodfishBuffer = buffer;
-        return buffer;
-      })
-      .catch(() => {
-        if (!audioWarningShown) {
-          console.warn("Woodfish audio could not be decoded");
-          audioWarningShown = true;
-        }
-        return null;
-      });
+    for (let index = 0; index < 4; index += 1) {
+      const audio = new Audio(woodfishAudioUrl);
+      audio.preload = "auto";
+      audio.playsInline = true;
+      audio.volume = .65;
+      audio.setAttribute("aria-hidden", "true");
+      woodfishAudioPool.push(audio);
+    }
     return true;
   } catch {
     if (!audioWarningShown) {
@@ -139,14 +127,19 @@ function prepareAudio() {
 function playWoodfishSound() {
   if (!prepareAudio()) return null;
   try {
-    if (!woodfishBuffer) return null;
-    if (audioContext.state === "suspended") void audioContext.resume();
-    const source = audioContext.createBufferSource();
-    const gain = audioContext.createGain();
-    source.buffer = woodfishBuffer;
-    gain.gain.value = .65;
-    source.connect(gain).connect(audioContext.destination);
-    source.start();
+    const audio = woodfishAudioPool[woodfishAudioIndex];
+    woodfishAudioIndex = (woodfishAudioIndex + 1) % woodfishAudioPool.length;
+    audio.pause();
+    audio.currentTime = 0;
+    const playback = audio.play();
+    if (playback) {
+      void playback.catch(() => {
+        if (!audioWarningShown) {
+          console.warn("Woodfish audio could not be started");
+          audioWarningShown = true;
+        }
+      });
+    }
     return performance.now();
   } catch {
     if (!audioWarningShown) {
