@@ -7,24 +7,47 @@
   <link rel="stylesheet" href="/static/css/admin.css">
 </head>
 <body>
-  <main class="admin-shell">
-    <header>
-      <div>
-        <p class="eyebrow">WOODFISH CONTROL</p>
-        <h1>敲木魚集中管理</h1>
+  <main class="stage">
+    <header class="topbar">
+      <div class="brand">
+        <p class="eyebrow">WOODFISH LIVE</p>
+        <h1>敲木魚 · 功德對決</h1>
       </div>
-      <span id="overall-status" class="status status--pending">讀取中</span>
+      <div class="topbar__right">
+        <span id="clock" class="clock">--:--:--</span>
+        <span id="overall-status" class="status status--pending">讀取中</span>
+        <button type="button" class="ghost" id="fullscreen-toggle" title="全螢幕（F）">全螢幕</button>
+        <button type="button" class="ghost" id="panel-toggle" title="控制面板（C）" aria-expanded="false" aria-controls="control-panel">控制面板</button>
+      </div>
     </header>
-    <section id="teams" class="teams" aria-live="polite"></section>
-    <section class="bulk-panel">
-      <h2>同時控制 A、B 隊</h2>
-      <div class="actions" data-target="ALL"></div>
+
+    <section id="teams" class="arena" aria-live="polite"></section>
+
+    <section class="tug" aria-label="兩隊功德比例">
+      <div class="tug__labels">
+        <span id="share-a" class="tug__share tug__share--a">50%</span>
+        <span id="lead-text" class="tug__lead">等待資料</span>
+        <span id="share-b" class="tug__share tug__share--b">50%</span>
+      </div>
+      <div class="tug__bar"><div id="tug-fill" class="tug__fill"></div><span class="tug__mid"></span></div>
+      <p class="total">兩隊合計功德 <strong id="grand-total">0</strong></p>
     </section>
-    <section class="audit-panel">
-      <h2>最近操作紀錄</h2>
-      <div id="audit-logs" aria-live="polite">讀取中</div>
+
+    <section id="control-panel" class="control-panel" hidden>
+      <div class="panel">
+        <h2>同時控制 A、B 隊</h2>
+        <div class="actions" data-target="ALL"></div>
+        <div class="team-actions">
+          <div><h3>A 隊</h3><div class="actions" data-target="A"></div></div>
+          <div><h3>B 隊</h3><div class="actions" data-target="B"></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>最近操作紀錄</h2>
+        <div id="audit-logs" aria-live="polite">讀取中</div>
+      </div>
+      <p class="footnote">管理服務位於 VM 1；資料與操作結果直接來自兩台遊戲伺服器。快捷鍵：C 控制面板、F 全螢幕。</p>
     </section>
-    <p class="footnote">管理服務位於 VM 1；資料與操作結果直接來自兩台遊戲伺服器。</p>
   </main>
   <script src="/static/js/admin.js"></script>
 </body>
