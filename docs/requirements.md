@@ -37,7 +37,7 @@
 - 和尚揮槌動畫：大和尚手臂揮下、小和尚與木魚受擊壓縮回彈、敲擊線閃動，約 40 ms 內敲中以配合音效；支援減少動態效果設定。圖層由 `scripts/build_monk_layers.py` 產生。
 - 功德浮動文字。
 - Web Audio 播放本地 WAV 木魚音效；iOS 17 以上使用 `navigator.audioSession.type = "playback"` 走媒體音量，鎖螢幕或切換 App 後下次觸控自動恢復。
-- 音色選單（暫時）：小／中／大木魚與原本音效，供測試者選出最終音效後移除。音效由 `scripts/make_woodfish_sound.py` 合成。
+- 音色選單：玩家可選小／中／大木魚與原本音效（預設中木魚），選擇存在手機上。音效由 `scripts/make_woodfish_sound.py` 合成。
 - FastAPI、SQLite、回合 CLI 管理及基本自動化測試。
 - 相對 API 路徑，適合 Cloudflare Tunnel 部署。
 - Zabbix/ntopng 流量監控實驗用途的部署文件、負載測試與逐級加壓測試工具（`scripts/stress_test.py`）。

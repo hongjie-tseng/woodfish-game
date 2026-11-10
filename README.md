@@ -1,6 +1,64 @@
-# 電子敲木魚
+# 電子敲木魚 Woodfish
 
-手機版 FastAPI 敲木魚遊戲，供課堂網路流量監控實驗使用。A、B 伺服器使用同一份程式碼，透過 `.env` 設定隊伍與各自獨立的 SQLite 資料庫。
+<p align="center">
+  <img src="app/static/assets/character-scene.png" alt="遊戲畫面：大和尚揮槌敲小和尚頭上的木魚" width="320">
+</p>
+
+> **English summary** — A mobile web game where players tap a wooden fish to earn "merit". I built it solo (FastAPI + vanilla JS + SQLite) as a live traffic generator for a graduate network-management course: about 60 classmates in two teams played on their phones while Zabbix and ntopng monitored the servers. The backend batches taps in memory and flushes them to SQLite every 0.5 s, which let each 4-vCPU VM sustain **2,000 requests/s** with p95 ≈ 30 ms on the LAN. It runs on three Ubuntu VMs behind a Cloudflare Tunnel, with a central admin console, audit logging, one-command PowerShell deployment and a custom load-testing tool.
+
+## 專案介紹
+
+國立中央大學資訊管理研究所「網路管理」課程專案。課程要求用真實玩家產生網路流量，再用 Zabbix 與 ntopng 觀察伺服器。我負責**敲木魚遊戲的完整開發與部署**（程式、架構、部署腳本、壓力測試皆由本人獨立完成）：課堂展示時**約 60 位同學**分成 A、B 兩隊，用自己的手機（4G／5G 或 Wi-Fi）連到各隊的遊戲伺服器，每敲一下就送出一個真實的 HTTP 請求，伺服器的流量變化即時顯示在監控系統上。
+
+- **期間**：2026 年 11 月
+- **角色**：個人開發（同一套環境上另有組員開發的另一款遊戲，兩者共存、互不干擾）
+- **技術**：Python · FastAPI · Uvicorn · SQLite（WAL）· Vanilla JavaScript · Web Audio API · pytest · Ubuntu · systemd · Cloudflare Tunnel · Zabbix · ntopng · PowerShell · Git
+
+### 系統架構
+
+```mermaid
+flowchart LR
+  P[玩家手機] -->|HTTPS| CF[Cloudflare]
+  CF -->|Tunnel| M["VM1 Monitor<br/>cloudflared · Zabbix · ntopng<br/>集中管理主控台 :8010"]
+  M -->|A 隊| A["VM2 Game-Server-A<br/>FastAPI ×3 workers<br/>SQLite"]
+  M -->|B 隊| B["VM3 Game-Server-B<br/>FastAPI ×3 workers<br/>SQLite"]
+  M -. 監控 /api/metrics .-> A
+  M -. 監控 /api/metrics .-> B
+```
+
+### 技術亮點
+
+| 挑戰 | 做法 | 結果 |
+|---|---|---|
+| 每次敲擊都寫資料庫，SQLite 撐不住高頻寫入 | 敲擊先在記憶體累計，背景每 0.5 秒用**一次交易批次寫入**；以 `tap_id` 去重，重送不會重複計算 | 單台 4 vCPU 內網實測 **每秒 2,000 次請求、成功率 99.5–100%、p95 約 30 ms、CPU 約 55%** |
+| 多個 worker 程序各有自己的記憶體，數字可能倒退 | 監控與主控台一律讀 SQLite；前端的全隊功德「同一次重設內只增不減」 | Zabbix 計數器保證單調遞增，Change per second 不會出現負值 |
+| 找出公開網路路徑的真正瓶頸 | 自寫 HTTP/1.1 長連線壓測工具（`scripts/stress_test.py`），逐級加壓並同時讀取各台 CPU／網卡；從外部主機經 Cloudflare 測試 | 定位瓶頸在 Monitor VM 的虛擬網卡軟中斷（ksoftirqd 單核滿載），而非遊戲伺服器；比較 QUIC 與 HTTP/2 後保留 QUIC，持續上限約每秒 2,000 次 |
+| 手機上的音效延遲與 iOS 靜音開關 | Web Audio 預先解碼 WAV；iOS 17+ 設定 `audioSession.type = "playback"`，切換 App 後自動恢復 | 敲擊動畫約 40 ms 內與音效同步 |
+| 現場要能隨時控制兩隊回合、追查問題 | 集中管理主控台（每秒更新兩隊狀態與速率）、管理 API 限定來源 IP、所有管理操作寫入稽核日誌 | 可同時或個別開始／暫停／重設兩隊；任一台離線時另一台照常顯示 |
+| 部署不能誤傷同機的監控系統與另一款遊戲 | PowerShell 部署腳本：預設唯讀檢查，確認 Commit 已推送、遠端工作樹乾淨，只重啟指定服務，並逐台驗證 Health 與版本 | 頁面顯示實際部署的 Commit，靜態資源以版本做 cache-busting |
+
+### 我從這個專案學到的
+
+- **先量測再優化**：從「每次敲擊寫一次資料庫」改成批次寫入前，先寫壓測工具量出瓶頸；外網測試時也是靠同時觀察 CPU、軟中斷與 UDP 緩衝區錯誤，才確定問題在虛擬網卡而不是程式。
+- **清楚的取捨**：批次寫入代表當機時最多遺失 0.5 秒的敲擊，這是為了效能而明確接受、並寫進文件的取捨。
+- **在既有環境上安全地工作**：監控系統、Tunnel 與另一款遊戲都已在運作，所有部署與設定變更都以「不影響其他服務、可還原」為前提。
+
+### 畫面
+
+<table>
+  <tr>
+    <td align="center" width="30%"><img src="docs/images/game-mobile.png" alt="手機遊戲畫面" width="240"><br>手機遊戲畫面：每敲一下送出一個 HTTP 請求</td>
+    <td align="center"><img src="docs/images/admin-console.png" alt="集中管理主控台" width="560"><br>集中管理主控台：兩隊即時功德、每秒敲擊數與領先比例</td>
+  </tr>
+</table>
+
+<sub>截圖為本機以壓力測試工具產生的示範資料。</sub>
+
+---
+
+以下為完整技術文件（本機開發、API、監控設定、部署與維運）。
+
+A、B 伺服器使用同一份程式碼，透過 `.env` 設定隊伍與各自獨立的 SQLite 資料庫。
 
 ## 本機啟動
 
@@ -19,7 +77,7 @@ python -m uvicorn app.main:app --reload
 ### 遊戲畫面
 
 - **敲擊動畫**：每次敲擊，大和尚的手臂會揮下木槌敲中木魚，小和尚與木魚被壓一下再彈回，黃色敲擊線閃動。敲中的畫面在約 40 ms 內出現，與音效同步。圖層由 `scripts/build_monk_layers.py` 從 `character-body-no-fish.png` 切出（`monk-big.png`、`monk-arm.png`、`monk-small.png`、`impact-marks.png`）；需要 Pillow 與 numpy，只在素材改變時執行。手機開啟「減少動態效果」時不播放動畫。
-- **音效**：使用 Web Audio 預先解碼的 WAV，延遲低。iOS 17 以上設定 `navigator.audioSession.type = "playback"`，改走媒體音量，不受靜音開關影響；鎖螢幕或切換 App 後，下一次觸控會自動恢復。左上角的「音色」選單可切換小／中／大木魚與原本的音效（預設中木魚），選擇存在手機上；這是試聽用的暫時功能，選定後會移除。木魚音效由 `scripts/make_woodfish_sound.py` 合成。
+- **音效**：使用 Web Audio 預先解碼的 WAV，延遲低。iOS 17 以上設定 `navigator.audioSession.type = "playback"`，改走媒體音量，不受靜音開關影響；鎖螢幕或切換 App 後，下一次觸控會自動恢復。左上角的「音色」選單可切換小／中／大木魚與原本的音效（預設中木魚），選擇存在手機上。木魚音效由 `scripts/make_woodfish_sound.py` 合成。
 - **我的功德**：由手機自己計算並存在 localStorage，敲擊時立即 +1，伺服器最終拒絕（例如回合暫停中）時扣回。換手機、換瀏覽器或清除網站資料會重新計算，不影響伺服器的全隊功德與請求數。
 - **全隊功德**：來自伺服器；同一次重設內只會往上，避免不同 worker 的時間差讓數字倒退。API 回應中的 `reset_marker` 每次重設都會變大，手機看到變大時把我的功德與全隊功德歸零。
 
@@ -180,7 +238,7 @@ sudo -n /usr/bin/systemctl restart woodfish-admin.service
 
 若 NOPASSWD 權限不足，腳本會在部署前停止，不會等待密碼，也不會使用 `sudo -S` 或標準輸入傳送密碼。`-InteractiveSudo` 已不再支援。
 
-已知限制：Windows PowerShell 5.1 會把遠端的警告輸出當成錯誤。VM 1 的 `woodfish-admin.service` 設定檔曾修改過但尚未 `daemon-reload`，重啟時 systemd 會印出提醒，因此部署 Monitor 時腳本可能顯示失敗、但服務其實已成功重啟；請以 `.\scripts\check-servers.ps1 -Target Monitor` 確認。在 VM 1 執行一次 `sudo systemctl daemon-reload` 即可消除這個提醒。本機工作樹有未提交檔案時腳本會停止，請先提交或移開。
+已知限制：Windows PowerShell 5.1 會把遠端的警告輸出當成錯誤。若 systemd 印出 daemon-reload 之類的提醒，部署腳本可能顯示失敗、但服務其實已成功重啟；請以 `.\scripts\check-servers.ps1 -Target Monitor` 確認。本機工作樹有未提交檔案時腳本會停止，請先提交或移開。
 
 若任何一台 SSH、Git、依賴安裝、重啟或 Health 驗證失敗，腳本會停止並回報失敗，不會宣稱整體部署成功。腳本不使用 `git reset --hard`、`git push --force`、資料庫重建或 `apt upgrade`。
 
